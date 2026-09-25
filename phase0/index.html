@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GuitarQuest input test</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>GuitarQuest <span class="muted">Phase 0 input test</span></h1>
+    <p class="privacy">Audio is analysed on this device and never uploaded.</p>
+  </div>
+  <div class="top-stats"><span id="fps">– fps</span><span id="rate">– analyses/s</span></div>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main class="grid">
+  <!-- 1. Device picker -->
+  <section class="card" id="card-input">
+    <h2>1 · Input device</h2>
+    <p class="hint">Connect the guitar by USB-C (or its instrument out into an interface), switch it on, then allow audio access.</p>
+    <div class="row">
+      <button id="btn-allow" class="primary">Allow audio input</button>
+      <button id="btn-refresh" class="ghost" disabled>Refresh list</button>
+    </div>
+    <label class="field">Device
+      <select id="device" disabled><option>Allow audio input first</option></select>
+    </label>
+    <div class="row">
+      <span id="device-badge" class="badge">No device</span>
+      <button id="btn-open" class="primary" disabled>Open device</button>
+    </div>
+    <label class="field">Channel
+      <select id="channel">
+        <option value="mix">Mix both channels</option>
+        <option value="left">Left / channel 1</option>
+        <option value="right">Right / channel 2</option>
+      </select>
+    </label>
+    <h3>Capture settings reported by the browser</h3>
+    <ul id="settings" class="checks"><li class="muted">Nothing open yet</li></ul>
+    <h3>Monitoring</h3>
+    <label class="switch"><input type="checkbox" id="monitor"> Pass the guitar through to this device's output</label>
+    <label class="field inline">Volume <input type="range" id="monitor-vol" min="0" max="1" step="0.01" value="0.6"></label>
+    <p class="hint">Use headphones. Leave off if you listen through the guitar's own speaker.</p>
+  </section>
+
+  <!-- 2. Level meter -->
+  <section class="card" id="card-level">
+    <h2>2 · Level</h2>
+    <div class="meter" aria-label="Input level">
+      <div class="meter-mask" id="meter-mask"></div>
+      <div class="meter-peak" id="meter-peak"></div>
+      <div class="meter-gate" id="meter-gate" title="Noise gate"></div>
+      <div class="meter-scale"><span>-60</span><span>-48</span><span>-36</span><span>-24</span><span>-12</span><span>0 dBFS</span></div>
+    </div>
+    <div class="row spread">
+      <div><span class="big-num" id="peak-db">–</span> <span class="muted">peak dBFS</span></div>
+      <div><span class="big-num" id="rms-db">–</span> <span class="muted">RMS dBFS</span></div>
+      <div class="clip" id="clip">CLIP</div>
+    </div>
+    <p id="level-msg" class="status">Waiting for input.</p>
+    <h3>Noise gate</h3>
+    <label class="field inline">Threshold <input type="range" id="gate" min="-80" max="-20" step="1" value="-55"> <span id="gate-val">-55 dBFS</span></label>
+    <div class="row">
+      <button id="btn-floor" class="ghost" disabled>Measure noise floor (2 s, hands off the strings)</button>
+    </div>
+    <p id="floor-msg" class="hint"></p>
+  </section>
+
+  <!-- 3. Pitch readout -->
+  <section class="card wide" id="card-pitch">
+    <h2>3 · Live pitch</h2>
+    <div class="pitch-layout">
+      <div class="note-box">
+        <div class="note" id="note">–</div>
+        <div class="freq"><span id="freq">–</span> Hz</div>
+        <div class="cents-meter">
+          <div class="cents-zone"></div>
+          <div class="cents-needle" id="needle"></div>
+          <div class="cents-scale"><span>-50</span><span>0</span><span>+50</span></div>
+        </div>
+        <div class="freq"><span id="cents">–</span> cents</div>
+        <div class="conf"><span class="muted">Confidence</span><div class="bar"><div id="conf-fill"></div></div><span id="conf-val">–</span></div>
+        <p id="pitch-state" class="status"></p>
+      </div>
+      <div class="pitch-side">
+        <canvas id="trace" height="220"></canvas>
+        <div class="row spread">
+          <div><span class="muted">Where that pitch lives, string and fret (s1 = high e):</span> <span id="positions">–</span></div>
+          <label class="field inline">A4 = <input type="number" id="ref" value="440" min="415" max="466" step="0.5"> Hz</label>
+        </div>
+        <div><span class="muted">Last notes:</span> <span id="history" class="history"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Latency -->
+  <section class="card wide" id="card-latency">
+    <h2>4 · Latency</h2>
+    <div class="lat-layout">
+      <div>
+        <h3>Pluck to screen <span class="muted">(budget 60 ms, REQ-DET-3)</span></h3>
+        <p class="hint">Pick single notes cleanly, one every second or so. Each note adds a sample.</p>
+        <table class="lat">
+          <tbody>
+            <tr><td>Input device and driver <span class="muted">(reported by browser)</span></td><td id="l-input">–</td></tr>
+            <tr><td>Audio processing buffer <span class="muted">(baseLatency)</span></td><td id="l-base">–</td></tr>
+            <tr><td>Detection: onset to stable pitch <span class="muted">(measured, median)</span></td><td id="l-detect">–</td></tr>
+            <tr><td>Delivery to screen <span class="muted">(measured, median)</span></td><td id="l-paint">–</td></tr>
+            <tr class="total"><td>Total estimate</td><td id="l-total">–</td></tr>
+          </tbody>
+        </table>
+        <div class="row"><span id="l-verdict" class="badge">No samples yet</span><span class="muted" id="l-count"></span><button id="btn-lat-reset" class="ghost small">Reset</button></div>
+        <p class="hint">Output latency (clicks, monitoring): <span id="l-output">–</span></p>
+      </div>
+      <div>
+        <h3>Play-along calibration <span class="muted">(REQ-DET-4)</span></h3>
+        <p class="hint">4 count-in clicks, then pick any note on every click. The median offset is what scoring subtracts later. It includes output latency, input latency and how you hear the click, so redo it when you change device or headphones.</p>
+        <div class="row">
+          <label class="field inline">Tempo <input type="number" id="cal-bpm" value="90" min="50" max="160"> BPM</label>
+          <label class="field inline">Clicks <input type="number" id="cal-n" value="16" min="8" max="64"></label>
+        </div>
+        <div class="row">
+          <button id="btn-cal" class="primary" disabled>Start calibration</button>
+          <div class="beats" id="beats"></div>
+        </div>
+        <p id="cal-msg" class="status"></p>
+        <p id="cal-saved" class="hint"></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot muted">
+  Phase 0 checks from the requirements: REQ-HW-1..4, REQ-HW-7, REQ-DET-1..4, REQ-DET-6, REQ-DET-7, REQ-NF-4.
+</footer>
+
+<script src="pitch-worklet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
