@@ -179,3 +179,23 @@ canvas.chart { width: 100%; height: 12rem; display: block; background: var(--can
 .keys td { padding: .3rem .5rem .3rem 0; }
 kbd { font: .8rem var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: .1rem .4rem; background: var(--panel2); }
 .foot { color: var(--muted); font-size: .8rem; padding: 1rem; text-align: center; }
+
+/* ---------- profiles ---------- */
+.avatar { width: 1.6rem; height: 1.6rem; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: .85rem; color: #111; flex: none; }
+.avatar.big { width: 2.6rem; height: 2.6rem; font-size: 1.2rem; }
+.profilechip { display: flex; align-items: center; gap: .45rem; padding: .3rem .7rem .3rem .35rem; border-radius: 999px; border: 1px solid var(--line); color: var(--text); text-decoration: none; font-weight: 600; font-size: .9rem; margin-left: auto; max-width: 12rem; }
+.profilechip .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.profilechip.on, .profilechip:hover { border-color: var(--accent); }
+.profilechip + .inputchip { margin-left: 0; }
+.profiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: 1rem; }
+.profile { display: flex; flex-direction: column; gap: .8rem; }
+.profile.active { border-color: var(--good); }
+.profile .pname { margin: 0; font-size: 1.15rem; text-transform: none; letter-spacing: 0; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pstats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; }
+.pstats .stat b { font-size: 1.15rem; }
+.profile.add { border-style: dashed; }
+.profile.add input { width: 100%; }
+.swatch { width: 1.7rem; height: 1.7rem; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.swatch.on { border-color: var(--text); }
+.btn.danger { border-color: var(--bad); color: var(--bad); }
+@media (max-width: 600px) { .profilechip { margin-left: 0; } }

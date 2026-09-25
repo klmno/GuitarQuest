@@ -115,25 +115,12 @@
     sections.push(inputCard);
 
     // --- profile ---
-    const profSel = h('select', { onchange: (e) => { store.load(e.target.value); UI.go('#/settings'); } },
-      ...store.profiles().map((p) => h('option', { value: p.id, selected: p.id === store.profile().id }, p.name)));
-    const fileIn = h('input', { type: 'file', accept: 'application/json,.json', hidden: true, onchange: async (e) => {
-      const f = e.target.files[0]; if (!f) return;
-      try { store.importData(await f.text()); UI.toast('Profile imported.'); UI.go('#/settings'); } catch (err) { UI.toast(err.message); }
-    } });
+    const pr = store.summary(store.profile().id);
     sections.push(h('section.card', null, h('h2', null, 'Profile'),
-      h('div.row', { style: { marginTop: '.6rem' } }, profSel,
-        h('button.btn.small', { onclick: () => { const n = prompt('Name for the new profile'); if (n) { store.createProfile(n.trim().slice(0, 40)); UI.go('#/settings'); } } }, 'New'),
-        h('button.btn.small', { onclick: () => { const n = prompt('Rename profile', store.profile().name); if (n) { store.renameProfile(n.trim().slice(0, 40)); UI.go('#/settings'); } } }, 'Rename'),
-        h('button.btn.small', { onclick: () => { if (store.profiles().length > 1 && confirm('Delete profile "' + store.profile().name + '" and all its progress?')) { store.deleteProfile(store.profile().id); UI.go('#/settings'); } } }, 'Delete')),
-      h('div.row', { style: { marginTop: '.6rem' } },
-        h('button.btn.small', { onclick: () => {
-          const blob = new Blob([store.exportData()], { type: 'application/json' });
-          const a = h('a', { href: URL.createObjectURL(blob), download: 'guitarquest-' + store.profile().name.replace(/\W+/g, '-') + '.json' });
-          document.body.append(a); a.click(); a.remove();
-        } }, 'Export progress'),
-        h('button.btn.small', { onclick: () => fileIn.click() }, 'Import'), fileIn),
-      h('p.small.muted', null, 'All data stays in this browser. Export to move it to another device.')));
+      h('div.row', { style: { marginTop: '.6rem' } }, UI.avatar(pr.name, pr.color, true),
+        h('div', null, h('strong', null, pr.name), h('div.small.muted', null, `${pr.passed} levels passed · ${pr.stars} stars · ${pr.minutes} minutes`))),
+      h('p.small.muted', null, 'These settings belong to this profile. Each player has their own progress, history and settings; all data stays in this browser.'),
+      h('div.row', null, h('button.btn', { onclick: () => UI.go('#/profiles') }, 'Switch, add or export profiles'))));
 
     // --- instrument ---
     sections.push(h('section.card', null, h('h2', null, 'Instrument'),

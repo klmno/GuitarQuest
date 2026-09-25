@@ -18,8 +18,10 @@
   };
   store.DEFAULT_SETTINGS = DEFAULT_SETTINGS;
 
-  function blankProfile(name) {
+  const COLORS = ['#f0a53a', '#4aa3ff', '#3ecf8e', '#f0609e', '#a58bff', '#f05a4f', '#2ec4c4', '#f0c33a'];
+  function blankProfile(name, color) {
     return {
+      color: color || COLORS[Math.floor(Math.random() * COLORS.length)],
       id: 'p' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36),
       name: name || 'Player', created: new Date().toISOString(),
       settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
@@ -32,6 +34,7 @@
     p.settings.keys = Object.assign({}, DEFAULT_SETTINGS.keys, p.settings.keys || {});
     for (const k of ['levels', 'days', 'misses', 'chordMisses', 'changes']) p[k] = p[k] || {};
     p.history = p.history || []; p.minutes = p.minutes || 0;
+    if (!p.color) p.color = COLORS[GQ.hash(p.id || p.name || '') % COLORS.length];
     return p;
   }
 
@@ -65,14 +68,20 @@
     store.emit('settings', { key, value });
   };
   store.profiles = () => profiles.slice();
-  store.createProfile = function (name) {
-    const p = blankProfile(name);
+  store.COLORS = COLORS;
+  store.createProfile = function (name, color) {
+    const p = blankProfile(name, color);
+    // the new player shares this computer's guitar input and instrument set-up
+    if (current) for (const k of ['deviceId', 'deviceLabel', 'tuning', 'a4', 'leftHanded']) p.settings[k] = current.settings[k];
     profiles.push({ id: p.id, name: p.name });
     S.set('profiles', profiles); S.set('p.' + p.id, p);
     return store.load(p.id);
   };
-  store.renameProfile = function (name) {
-    const p = store.profile(); p.name = name;
+  store.renameProfile = function (name, id) {
+    const p = id && id !== store.profile().id ? S.get('p.' + id, null) : store.profile();
+    if (!p) return;
+    p.name = name;
+    if (p !== current) S.set('p.' + p.id, p);
     const e = profiles.find((x) => x.id === p.id); if (e) e.name = name;
     S.set('profiles', profiles); store.save(); store.emit('profile', p);
   };
@@ -118,8 +127,8 @@
     p.days[d] = (p.days[d] || 0) + sec / 60;
     store.save();
   };
-  store.streak = function () {
-    const days = store.profile().days;
+  store.streak = function (profile) {
+    const days = (profile || store.profile()).days || {};
     let n = 0;
     const d = new Date();
     const key = (x) => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
@@ -128,14 +137,24 @@
     return n;
   };
 
+  // Progress summary of any profile, without switching to it
+  store.summary = function (id) {
+    const p = id === (current && current.id) ? current : migrate(S.get('p.' + id, null) || blankProfile('?'));
+    const lv = Object.values(p.levels);
+    const last = p.history.length ? p.history[p.history.length - 1].t : null;
+    return { id, name: p.name, color: p.color, passed: lv.filter((r) => r.stars > 0).length, stars: lv.reduce((s, r) => s + (r.stars || 0), 0),
+      minutes: Math.round(p.minutes), streak: store.streak(p), runs: p.history.length, last, created: p.created };
+  };
+  store.exportData = function (id) {
+    const p = !id || id === store.profile().id ? store.profile() : S.get('p.' + id, null);
+    return JSON.stringify({ app: 'GuitarQuest', version: 1, exported: new Date().toISOString(), profile: p }, null, 1);
+  };
+
   // ----- per-device data (calibration, gate, "this is my guitar") -----
   store.device = (id) => S.get('dev.' + id, {});
   store.setDevice = (id, patch) => { const d = Object.assign(store.device(id), patch); S.set('dev.' + id, d); return d; };
 
   // ----- export / import -----
-  store.exportData = function () {
-    return JSON.stringify({ app: 'GuitarQuest', version: 1, exported: new Date().toISOString(), profile: store.profile() }, null, 1);
-  };
   store.importData = function (json) {
     const data = JSON.parse(json);
     if (!data || data.app !== 'GuitarQuest' || !data.profile) throw new Error('This is not a GuitarQuest export.');

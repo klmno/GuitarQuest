@@ -83,8 +83,16 @@
       ...[['learn', 'Learn'], ['songs', 'Songs'], ['tuner', 'Tuner'], ['progress', 'Progress'], ['settings', 'Settings']]
         .map(([k, t]) => h('a', { href: '#/' + k, 'data-k': k }, t)));
     UI.nav = nav;
-    return h('header.topbar', null, h('div.brand', { html: LOGO + '<span>GuitarQuest</span>' }), nav, chip);
+    UI.pchip = h('a.profilechip', { href: '#/profiles', title: 'Switch or manage profiles' });
+    UI.refreshProfileChip();
+    return h('header.topbar', null, h('div.brand', { html: LOGO + '<span>GuitarQuest</span>' }), nav, UI.pchip, chip);
   }
+  UI.refreshProfileChip = function () {
+    if (!UI.pchip) return;
+    const p = store.profile();
+    UI.pchip.innerHTML = '';
+    UI.pchip.append(UI.avatar(p.name, p.color), h('span.label', null, p.name));
+  };
   function updateChip() {
     const chip = UI.chip; if (!chip) return;
     const d = A.current(), c = d && A.ctx ? A.classify(d) : null;
@@ -108,6 +116,7 @@
     const screen = UI.screens[name] || UI.screens.learn;
     UI.current = screen(main, parts.slice(1)) || {};
     for (const a of UI.nav.querySelectorAll('a')) a.classList.toggle('on', a.dataset.k === name || (name === 'lesson' && a.dataset.k === 'learn'));
+    UI.pchip.classList.toggle('on', name === 'profiles');
     window.scrollTo(0, 0);
   }
   UI.go = (hash) => { if (location.hash === hash) route(); else location.hash = hash; };
@@ -147,7 +156,8 @@
     if (blockers.length) main.append(...blockers);
     if (!A.ctx) main.append(h('div', { style: { marginBottom: '1rem' } }, UI.connectCard(() => route())));
     main.append(h('div.hero', null,
-      h('div', null, h('h2', null, 'Hi ' + p.name), h('div.muted.small', null, `${CUR.levels.length} levels in ${CUR.units.length} units`)),
+      h('div.row', null, UI.avatar(p.name, p.color, true), h('div', null, h('h2', null, 'Hi ' + p.name),
+        h('div.muted.small', null, `${CUR.levels.length} levels in ${CUR.units.length} units · `, h('a', { href: '#/profiles' }, store.profiles().length > 1 ? 'switch player' : 'add a player')))),
       h('div.stats', null,
         h('div.stat', null, h('b', null, passed), h('span', null, 'levels passed')),
         h('div.stat', null, h('b', null, starsTotal), h('span', null, 'stars')),
@@ -258,7 +268,9 @@
       UI.alerts.append(UI.banner('bad', 'This browser is not saving anything (private window, or Safari opening the file directly). Progress will be lost: open the app from localhost or its https address instead.'));
     UI.applyDisplay();
     store.on('settings', (e) => { if (e.key === 'displaySize') UI.applyDisplay(); });
+    store.on('profile', () => { UI.refreshProfileChip(); UI.applyDisplay(); });
     window.addEventListener('hashchange', route);
+    if (UI.needsPick()) history.replaceState(null, '', '#/profiles/pick');
     document.addEventListener('pointerdown', () => A.resume());
     route();
     requestAnimationFrame(loop);

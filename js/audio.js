@@ -261,6 +261,7 @@
     if (document.hidden) { hiddenAt = performance.now(); return; }
     if (A.ctx && hiddenAt && performance.now() - hiddenAt > 3000) { A.resume(); A.emit('resumed'); }
   });
+  store.on('profile', () => { A.applyMixer(); A.setMonitor(); });
   store.on('settings', (e) => {
     if (/^(metronome|backing|monitorVol)/.test(e.key)) A.applyMixer();
     if (e.key === 'monitor' || e.key === 'ampTone') A.setMonitor();

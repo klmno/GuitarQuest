@@ -32,7 +32,7 @@ It is plain HTML, CSS and JavaScript: no build step, no framework and no depende
 | 140 levels in 14 units, 16 songs (traditional, public domain or original, origin on every card) | `js/curriculum.js`, `js/songs.js` | REQ-FN-1, 4, REQ-NF-6 |
 | Fretboard with finger colours, falling-note highway, tab with rhythm and technique marks, standard notation, chord boxes shown before the change, live feedback | `js/render.js`, `js/ui-lesson.js` | REQ-UI-1..6 |
 | Left-handed mode, display size, alternative tunings and capo | Settings | REQ-UI-7, 8 |
-| Scoring out of 100 per note, stars at 60 / 80 / 95, progress, weak spots, chord-change speed, streak, profiles, export and import | `js/scoring.js`, `js/store.js`, Progress | REQ-SC-1..4 |
+| Scoring out of 100 per note, stars at 60 / 80 / 95, progress, weak spots, chord-change speed, streak; profiles with their own progress and settings, a switcher in the top bar, "Who is playing?" at start-up, export and import | `js/scoring.js`, `js/store.js`, Progress | REQ-SC-1..4 |
 | Footswitch keys (learnable), voice commands, auto-advance | `js/controls.js` | REQ-PF-3 |
 | PWA: manifest, service worker, icons | `manifest.webmanifest`, `sw.js` | REQ-PF-1 |
 | Phase 0 input test page | `phase0/` | Build order, Phase 0 |
@@ -54,7 +54,7 @@ E4 F#3 Bb3                          pitches, placed on the neck in the level's p
 node tests/run.js                        # detector accuracy, chord matching, every level parses and fits its bars
 node tests/make-wav.js /tmp/guitar.wav   # synthesized test recording
 npm i --no-save playwright               # only needed for the browser test
-python3 -m http.server 8777 & node tests/browser.test.js && node tests/progress.test.js
+python3 -m http.server 8777 & node tests/browser.test.js && node tests/progress.test.js && node tests/profiles.test.js
 ```
 
 The detector tests use synthesized plucked strings, clean and overdriven:

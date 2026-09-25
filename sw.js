@@ -1,6 +1,6 @@
 /* GuitarQuest service worker: cache-first so the app starts offline in under two seconds (REQ-PF-1, REQ-NF-3).
  * Bump VERSION whenever a file changes. */
-const VERSION = 'gq-v2';
+const VERSION = 'gq-v3';
 const ASSETS = [
   './',
   'index.html',
@@ -21,6 +21,7 @@ const ASSETS = [
   'js/theory.js',
   'js/tuner.js',
   'js/ui-lesson.js',
+  'js/ui-profiles.js',
   'js/ui-settings.js',
   'js/ui.js',
   'js/util.js',
