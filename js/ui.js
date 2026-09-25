@@ -15,6 +15,16 @@
     return h('div.banner.' + kind, null, h('span.grow', null, text), ...(actions || []));
   };
   UI.alerts = h('div#alerts');
+  // Why runs would not count right now, with the one-tap fix (REQ-HW-2, REQ-DET-9)
+  UI.scoreBlockers = function (backTo, onChange) {
+    const out = [];
+    if (!A.ctx) return out;
+    if (!A.canScore()) out.push(UI.banner('warn', 'Scores are off: this input is not confirmed as your guitar, so runs only count as practice.',
+      [h('button.btn.small.good', { onclick: () => { A.markGuitar(true); if (onChange) onChange(); } }, 'This is my guitar')]));
+    if (!GQ.tuner.isTuned()) out.push(UI.banner('warn', 'Scores are off until you tune (about 30 seconds). Runs still count as practice, but earn no stars.',
+      [h('button.btn.small.primary', { onclick: () => UI.go('#/tuner/back/' + (backTo || '')) }, 'Tune now')]));
+    return out;
+  };
   UI.applyDisplay = function () {
     const s = store.settings();
     document.documentElement.style.setProperty('--scale', s.displaySize || 1);
@@ -39,8 +49,8 @@
       const rank = { guitar: 0, direct: 1, unknown: 2, alias: 3, mic: 4 };
       const list = A.devices.map((d) => ({ d, c: A.classify(d) })).sort((a, b) => rank[a.c.kind] - rank[b.c.kind]);
       for (const { d } of list) sel.append(h('option', { value: d.deviceId }, d.label || 'Unnamed input'));
-      const saved = store.settings().deviceId;
-      if (saved && A.devices.some((d) => d.deviceId === saved)) sel.value = saved;
+      const saved = A.findSaved();
+      if (saved) sel.value = saved.deviceId;
       sel.disabled = !A.devices.length; open.disabled = !A.devices.length;
       upd();
     };
@@ -51,8 +61,8 @@
       try { await A.requestPermission(); } catch (e) { status.textContent = 'Audio access was refused (' + e.name + '). Allow it in the site settings and try again.'; return; }
       allow.textContent = 'Access allowed'; allow.disabled = true;
       fill();
-      const saved = store.settings().deviceId;
-      if (saved && A.devices.some((d) => d.deviceId === saved)) openFn(saved);
+      const saved = A.findSaved();
+      if (saved) openFn(saved.deviceId);
     }
     async function openFn(id) {
       status.textContent = 'Opening…';
@@ -131,6 +141,10 @@
     const passed = CUR.levels.filter((l) => p.levels[l.id] && p.levels[l.id].stars > 0).length;
     const starsTotal = Object.values(p.levels).reduce((s, r) => s + (r.stars || 0), 0);
     const nextId = UI.nextLevelId(), next = CUR.byId(nextId);
+    const practised = {};
+    for (const r of p.history) if (!r.scored && r.mode !== 'tuner') practised[r.level] = Math.max(practised[r.level] || 0, r.score || 0);
+    const blockers = UI.scoreBlockers('', () => route());
+    if (blockers.length) main.append(...blockers);
     if (!A.ctx) main.append(h('div', { style: { marginBottom: '1rem' } }, UI.connectCard(() => route())));
     main.append(h('div.hero', null,
       h('div', null, h('h2', null, 'Hi ' + p.name), h('div.muted.small', null, `${CUR.levels.length} levels in ${CUR.units.length} units`)),
@@ -148,7 +162,10 @@
         h('div.levels', null, ...u.levels.map((l) => {
           const r = p.levels[l.id];
           return h('button', { class: 'lvl' + (r && r.stars ? ' passed' : '') + (l.id === nextId ? ' next' : ''), onclick: () => UI.go('#/lesson/' + l.id) },
-            h('span.num', null, u.id + '.' + l.n + (r && r.best ? ' · ' + r.best + '%' : '')), h('span.t', null, l.title), h('span.stars', null, UI.stars(r ? r.stars : 0)));
+            h('span.num', null, u.id + '.' + l.n + (r && r.best ? ' · ' + r.best + '%' : '')), h('span.t', null, l.title),
+            r && r.stars ? h('span.stars', null, UI.stars(r.stars))
+              : l.id in practised ? h('span.practised', { title: 'Played without a score (not tuned, or input not confirmed)' }, 'practised · ' + practised[l.id] + '%')
+              : h('span.stars', null, UI.stars(0)));
         })));
       main.append(card);
     }
@@ -237,6 +254,8 @@
 
   UI.start = function () {
     document.body.prepend(topbar());
+    if (!GQ.storage.set('probe', Date.now()) || GQ.storage.get('probe', null) == null)
+      UI.alerts.append(UI.banner('bad', 'This browser is not saving anything (private window, or Safari opening the file directly). Progress will be lost: open the app from localhost or its https address instead.'));
     UI.applyDisplay();
     store.on('settings', (e) => { if (e.key === 'displaySize') UI.applyDisplay(); });
     window.addEventListener('hashchange', route);

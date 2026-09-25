@@ -6,6 +6,8 @@
   // ---------- Tuner (REQ-DET-9) ----------
   UI.screens.tuner = function (main, args) {
     const fromLevel = args[0] === 'level';
+    const backTo = args[0] === 'back' && args[1] ? args.slice(1).join('/') : null;
+    const creditLevel = TU.creditLevel;
     const s = store.settings();
     TU.reset();
     if (!A.ctx) main.append(h('div', { style: { marginBottom: '1rem' } }, UI.connectCard(() => UI.go(location.hash))));
@@ -31,13 +33,14 @@
       h('p.small.muted', null, 'Every string must hold within ±5 cents for half a second. Tap a string to hear its reference pitch. Scored lessons need a passed check with this input and tuning.'),
       h('div.row', { style: { justifyContent: 'center' } },
         h('button.btn', { onclick: () => { TU.reset(); drawStrings(); } }, 'Start again'),
-        fromLevel ? h('button.btn.primary', { onclick: () => UI.go('#/lesson/' + GQ.curriculum.levels[1].id) }, 'Continue to the next level →') : null)));
+        fromLevel ? h('button.btn.primary', { onclick: () => UI.go('#/lesson/' + GQ.curriculum.levels[1].id) }, 'Continue to the next level →') : null,
+        backTo ? h('button.btn.primary', { onclick: () => UI.go('#/lesson/' + backTo) }, '← Back to the lesson') : null)));
     const offS = TU.on('string', () => drawStrings());
     const offP = TU.on('passed', () => {
       status.textContent = 'All six strings are in tune. Scored lessons are unlocked.'; status.className = 'msg good';
-      if (fromLevel) store.recordRun({ level: 'u1-1', score: 100, stars: 3, accuracy: 100, timingMs: null, unclear: 0, mode: 'tuner', scored: true });
     });
-    if (TU.isTuned()) { status.textContent = 'Tuning already checked for this session. Re-check any time.'; status.className = 'msg good'; }
+    if (TU.isTuned()) { status.textContent = 'Tuning already checked. Re-check any time.'; status.className = 'msg good'; creditLevel(); }
+    if (!A.canScore() && A.ctx) status.textContent = 'Note: this input is not confirmed as your guitar yet (Settings > Guitar input).';
     UI.draw = function () {
       const r = TU.update(A.pitch);
       if (!r) { note.style.opacity = 0.4; return; }
@@ -73,7 +76,7 @@
       const gv = h('span.mono', null, A.gateDb + ' dBFS');
       gateMark.style.left = GQ.clamp((A.gateDb + 60) / 60, 0, 1) * 100 + '%';
       const devSel = h('select', null, ...A.devices.map((x) => h('option', { value: x.deviceId, selected: x.deviceId === A.deviceId }, x.label || 'Unnamed input')));
-      const cal = store.device(A.deviceId).calib;
+      const cal = store.device(A.key()).calib;
       const calMsg = h('p.msg', null, cal ? `Calibrated: ${cal.offsetMs} ms ±${cal.spreadMs} ms (${new Date(cal.date).toLocaleDateString()})` : 'Not calibrated for this input yet.');
       calMsg.className = 'msg ' + (cal ? 'good' : 'warn');
       const beats = h('div.row');
@@ -86,7 +89,7 @@
             : h('button.btn.small.good', { onclick: () => { A.markGuitar(true); drawInput(); } }, 'This is my guitar (direct input)'),
           h('span.small.muted', null, 'The app guesses from the device name. Confirm it here if the guess is wrong: scored lessons only run on a direct input.')),
         h('label.inline', null, 'Channel ', h('select', { onchange: (e) => A.setChannel(e.target.value) },
-          ...[['mix', 'Mix both'], ['left', 'Left / 1'], ['right', 'Right / 2']].map(([v, t]) => h('option', { value: v, selected: (store.device(A.deviceId).channel || 'mix') === v }, t)))),
+          ...[['mix', 'Mix both'], ['left', 'Left / 1'], ['right', 'Right / 2']].map(([v, t]) => h('option', { value: v, selected: (store.device(A.key()).channel || 'mix') === v }, t)))),
         h('h3', null, 'Level and noise gate'),
         h('div.levelmeter', null, mask, gateMark),
         h('div.row', { style: { marginTop: '.5rem' } }, h('label.inline', null, 'Gate ', gate, gv), h('button.btn.small', { onclick: () => A.measureFloor() }, 'Measure noise floor (2 s)')),

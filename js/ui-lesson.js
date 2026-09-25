@@ -71,7 +71,7 @@
     const fbWrap = h('div.fb', { style: { marginTop: '.8rem' } }, fb);
     const notices = h('div');
     main.append(head, notices, toolbar, loopBar, stage, fbWrap);
-    if (!A.ctx) notices.append(h('div', { style: { marginBottom: '.8rem' } }, UI.connectCard(() => { notices.innerHTML = ''; build(); })));
+    if (!A.ctx) notices.append(h('div', { style: { marginBottom: '.8rem' } }, UI.connectCard(() => { notices.innerHTML = ''; build(); showBlockers(); })));
 
     function layout() {
       hwcol.hidden = !views.highway; stage.classList.toggle('nohw', !views.highway);
@@ -107,6 +107,13 @@
       lesson.on('end', showResult);
       updateButtons();
     }
+    function showBlockers() {
+      if (!A.ctx) return;
+      notices.innerHTML = '';
+      const b = UI.scoreBlockers(level.id, showBlockers);
+      if (b.length) notices.append(...b);
+      else if (lesson && lesson.loop) notices.append(UI.banner('info', 'Loop practice is not scored.'));
+    }
     function toggle() {
       if (!A.ctx) { say('Connect the guitar first.', 'warn'); return; }
       if (lesson.state === 'playing') { lesson.pause(); return; }
@@ -115,8 +122,7 @@
         if (lesson.state === 'paused') { lesson.resume(); return; }
         if (lesson.state === 'done' || lesson.state === 'stopped') { const t = lesson.tempo, lp = lesson.loop, lk = lesson.lock; build(); lesson.tempo = t; lesson.lock = lk; if (lp) lesson.setLoop(lp.a, lp.b, lp.ramp); }
         lesson.start();
-        if (lesson.unscoredReason) { notices.innerHTML = ''; notices.append(UI.banner('info', lesson.unscoredReason, lesson.unscoredReason.startsWith('Tune') ? [h('button.btn.small', { onclick: () => { lesson.stop(); UI.go('#/tuner'); } }, 'Open tuner')] : [])); }
-        else notices.innerHTML = '';
+        showBlockers();
       } catch (e) { say(e.message, 'bad'); }
     }
     function restart() { if (overlay) { overlay.remove(); overlay = null; } const t = lesson ? lesson.tempo : 1; build(); lesson.tempo = t; if (A.ctx) toggle(); }
@@ -144,13 +150,13 @@
       const passed = run.stars > 0;
       const next = CUR.next(level.id);
       overlay = h('div.overlay', null, h('div.card.result', null,
-        h('h2', null, run.inputProblem ? 'The input needs attention' : passed ? 'Level passed' : 'Keep going'),
+        h('h2', null, run.inputProblem ? 'The input needs attention' : !run.scored ? 'Practice run (not scored)' : passed ? 'Level passed' : 'Keep going'),
         run.inputProblem ? h('p', null, run.reason) : h('div', null, h('div.big', null, run.score + '%'), h('div.stars', null, UI.stars(run.stars))),
         h('div.grid3', null,
           h('div.stat', null, h('b', null, run.accuracy + '%'), h('span', null, 'notes right')),
           h('div.stat', null, h('b', null, run.timingMs != null ? '±' + run.timingMs + ' ms' : '–'), h('span', null, run.timingBias != null ? (run.timingBias > 0 ? 'late by ' : 'early by ') + Math.abs(run.timingBias) + ' ms on average' : 'timing')),
           h('div.stat', null, h('b', null, run.unclear), h('span', null, 'unclear (not counted)'))),
-        !run.scored && !run.inputProblem && run.reason ? h('p.small.muted', null, run.reason) : null,
+        !run.scored && !run.inputProblem ? h('div', { style: { textAlign: 'left' } }, ...(UI.scoreBlockers(level.id, () => {}).length ? UI.scoreBlockers(level.id, () => { overlay.remove(); overlay = null; showBlockers(); }) : [h('p.small.muted', null, run.reason || '')])) : null,
         run.changes && run.changes.length ? h('p.small.muted', null, 'Chord changes: average ' + (GQ.mean(run.changes.map((c) => c.ms)) / 1000).toFixed(2) + ' s') : null,
         h('div.row', { style: { justifyContent: 'center' } },
           h('button.btn', { onclick: () => restart() }, '↺ Again'),
@@ -240,6 +246,7 @@
     };
 
     build();
+    showBlockers();
     if (level.ladder) loopBtn.classList.add('on');
     return {
       destroy() { if (lesson) lesson.stop(); if (overlay) overlay.remove(); clearTimeout(autoTimer); },

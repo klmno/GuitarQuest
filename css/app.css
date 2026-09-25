@@ -102,6 +102,7 @@ label.inline { display: inline-flex; align-items: center; gap: .45rem; font-size
 .lvl .num { font: 600 .75rem var(--mono); color: var(--muted); }
 .lvl .t { font-weight: 600; font-size: .92rem; }
 .lvl .stars { color: var(--accent); letter-spacing: .1em; font-size: .9rem; margin-top: auto; }
+.lvl .practised { margin-top: auto; font-size: .8rem; color: var(--info); }
 .lvl.next { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .lvl.passed .num { color: var(--good); }
 

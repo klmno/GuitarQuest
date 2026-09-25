@@ -15,12 +15,20 @@
   A.CONF_MIN = 0.8;
   let lastCtxT = 0, lastPerf = 0;
 
+  // Per-device data is keyed by the device name: browsers may hand out a new deviceId after a
+  // reload (always for pages opened from a file), but the Enya keeps its name.
+  A.keyOf = (dev) => (dev && dev.label ? 'label:' + dev.label : dev ? dev.deviceId : '');
+  A.key = () => A.keyOf(A.current());
+  A.findSaved = function () {
+    const s = store.settings();
+    return A.devices.find((d) => d.deviceId === s.deviceId) || (s.deviceLabel ? A.devices.find((d) => d.label === s.deviceLabel) : null) || null;
+  };
   A.supported = () => !!(G.navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && G.AudioWorkletNode);
 
   // ---- device classification (REQ-HW-2) ----
   A.classify = function (dev) {
     const l = (dev.label || '').toLowerCase();
-    const ov = dev.deviceId ? store.device(dev.deviceId).isGuitar : undefined;
+    const ov = A.keyOf(dev) ? store.device(A.keyOf(dev)).isGuitar : undefined;
     if (ov === true) return { kind: 'guitar', text: 'Guitar (you confirmed it)', cls: 'good', scored: true };
     if (ov === false) return { kind: 'mic', text: 'Microphone (you marked it)', cls: 'bad', scored: false };
     if (dev.deviceId === 'default' || dev.deviceId === 'communications')
@@ -35,7 +43,7 @@
   };
   A.current = () => A.devices.find((d) => d.deviceId === A.deviceId) || (A.deviceId ? { deviceId: A.deviceId, label: A.deviceLabel } : null);
   A.canScore = () => { const d = A.current(); return !!(A.ctx && d && A.classify(d).scored); };
-  A.markGuitar = function (isGuitar) { if (A.deviceId) { store.setDevice(A.deviceId, { isGuitar }); A.emit('device', A.current()); } };
+  A.markGuitar = function (isGuitar) { if (A.deviceId) { store.setDevice(A.key(), { isGuitar }); A.emit('device', A.current()); } };
 
   function constraints(deviceId) {
     const a = { echoCancellation: false, noiseSuppression: false, autoGainControl: false,
@@ -70,7 +78,8 @@
     const url = guitarQuestWorkletUrl();
     await ctx.audioWorklet.addModule(url);
     if (url.startsWith('blob:')) URL.revokeObjectURL(url);
-    const dev = store.device(deviceId || set.deviceId || '');
+    const label0 = track.label || (A.devices.find((d) => d.deviceId === deviceId) || {}).label;
+    const dev = store.device(label0 ? 'label:' + label0 : deviceId || set.deviceId || '');
     A.gateDb = dev.gateDb != null ? dev.gateDb : -55;
     const node = new AudioWorkletNode(ctx, 'guitar-input', {
       numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
@@ -96,6 +105,7 @@
     A.setMonitor();
     track.onended = () => lost();
     store.setSetting('deviceId', A.deviceId);
+    store.setSetting('deviceLabel', A.deviceLabel);
     if (ctx.state !== 'running') { try { await ctx.resume(); } catch { /* resumed on next tap */ } }
     A.emit('state', A.state());
     A.emit('device', A.current());
@@ -122,7 +132,7 @@
   A.setGate = function (db) {
     A.gateDb = Math.round(GQ.clamp(db, -80, -20));
     if (A.node) A.node.port.postMessage({ type: 'setGate', db: A.gateDb });
-    if (A.deviceId) store.setDevice(A.deviceId, { gateDb: A.gateDb });
+    if (A.deviceId) store.setDevice(A.key(), { gateDb: A.gateDb });
     A.emit('gate', A.gateDb);
   };
   A.measureFloor = function () {
@@ -133,7 +143,7 @@
   };
   A.setChannel = function (mode) {
     if (A.node) A.node.port.postMessage({ type: 'setChannel', mode });
-    if (A.deviceId) store.setDevice(A.deviceId, { channel: mode });
+    if (A.deviceId) store.setDevice(A.key(), { channel: mode });
   };
 
   // ---- mixer & monitoring (REQ-FN-5, REQ-HW-7) ----
@@ -183,7 +193,7 @@
   };
   A.outputLatency = () => (A.ctx ? (A.ctx.outputLatency || 0) + (A.ctx.baseLatency || 0) : 0);
   // Calibration offset (s) for the current device: subtract from onset times before comparing with the beat
-  A.calibration = () => (A.deviceId ? store.device(A.deviceId).calib || null : null);
+  A.calibration = () => (A.deviceId ? store.device(A.key()).calib || null : null);
   A.offsetSec = () => { const c = A.calibration(); return c ? c.offsetMs / 1000 : A.outputLatency() + (Number.isFinite(A.inputLatencyMs) ? A.inputLatencyMs / 1000 : 0.01); };
 
   // ---- worklet messages ----
@@ -201,7 +211,7 @@
         A.measuringFloor = false;
         const gate = GQ.clamp(Math.max(m.rmsDb + 12, m.peakDb + 3), -80, -35);
         A.setGate(gate);
-        if (A.deviceId) store.setDevice(A.deviceId, { floorAt: Date.now(), floorDb: m.rmsDb });
+        if (A.deviceId) store.setDevice(A.key(), { floorAt: Date.now(), floorDb: m.rmsDb });
         A.emit('floor', { ...m, gate });
         break;
       }
@@ -237,7 +247,7 @@
         if (offs.length < Math.max(4, clicks / 2)) return resolve({ ok: false, hits, n: clicks, found: offs.length });
         const med = GQ.median(offs), mad = GQ.median(offs.map((x) => Math.abs(x - med)));
         const res = { ok: true, offsetMs: +med.toFixed(1), spreadMs: +mad.toFixed(1), found: offs.length, n: clicks, hits, date: new Date().toISOString() };
-        if (A.deviceId) store.setDevice(A.deviceId, { calib: res });
+        if (A.deviceId) store.setDevice(A.key(), { calib: res });
         resolve(res);
       }, 30);
     });

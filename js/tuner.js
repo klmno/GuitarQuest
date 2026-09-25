@@ -1,11 +1,11 @@
-/* GuitarQuest: tuner and tuning check (REQ-DET-9). A scored lesson needs a passed check this session. */
+/* GuitarQuest: tuner and tuning check (REQ-DET-9). A scored lesson needs a passed check (kept for 3 hours per input and tuning). */
 (function (G) {
   'use strict';
   const GQ = G.GQ, T = GQ.theory, store = GQ.store;
   const TU = (GQ.tuner = new GQ.Emitter());
   const HOLD_MS = 500, TOL = 5;
 
-  TU.passed = null; // {at, deviceId, tuning}
+  TU.passed = GQ.storage.get('tuned', null); // {at, deviceId, tuning}; kept across reloads
   TU.reset = function () {
     TU.ok = {};
     TU.hold = {};
@@ -18,10 +18,17 @@
   };
   TU.isTuned = function () {
     const s = store.settings(), p = TU.passed;
-    return !!(p && p.tuning === s.tuning && p.deviceId === GQ.audio.deviceId && Date.now() - p.at < 3 * 3600e3);
+    return !!(p && p.tuning === s.tuning && (p.device === GQ.audio.key() || p.deviceId === GQ.audio.deviceId) && Date.now() - p.at < 3 * 3600e3);
+  };
+  // passing the tuning check completes level 1.1 "Tune up"
+  TU.creditLevel = function () {
+    const r = store.levelResult('u1-1');
+    if (!r || !r.stars) store.recordRun({ level: 'u1-1', score: 100, stars: 3, accuracy: 100, timingMs: null, unclear: 0, mode: 'tuner', scored: true });
   };
   TU.markPassed = function () {
-    TU.passed = { at: Date.now(), deviceId: GQ.audio.deviceId, tuning: store.settings().tuning };
+    TU.passed = { at: Date.now(), deviceId: GQ.audio.deviceId, device: GQ.audio.key(), tuning: store.settings().tuning };
+    GQ.storage.set('tuned', TU.passed);
+    TU.creditLevel();
     TU.emit('passed', TU.passed);
   };
   // Feed a pitch frame; returns the reading for display

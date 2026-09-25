@@ -54,7 +54,7 @@ E4 F#3 Bb3                          pitches, placed on the neck in the level's p
 node tests/run.js                        # detector accuracy, chord matching, every level parses and fits its bars
 node tests/make-wav.js /tmp/guitar.wav   # synthesized test recording
 npm i --no-save playwright               # only needed for the browser test
-python3 -m http.server 8777 & node tests/browser.test.js
+python3 -m http.server 8777 & node tests/browser.test.js && node tests/progress.test.js
 ```
 
 The detector tests use synthesized plucked strings, clean and overdriven:

@@ -14,7 +14,7 @@
     autoAdvance: false, voice: false,
     keys: { toggle: ['Space'], next: ['PageDown', 'ArrowRight'], again: ['PageUp', 'ArrowLeft'], slower: ['ArrowDown'], faster: ['ArrowUp'], lock: ['KeyL'] },
     practiceLock: false, positionLock: false,
-    deviceId: null,
+    deviceId: null, deviceLabel: null,
   };
   store.DEFAULT_SETTINGS = DEFAULT_SETTINGS;
 
