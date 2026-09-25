@@ -198,12 +198,16 @@
           h('h4', { style: { marginTop: '.5rem' } }, s.title),
           h('div.origin', null, s.origin),
           h('div.row', { style: { marginTop: '.6rem' } },
+            h('button.btn.small.ghost.listen', { 'data-song': s.id, onclick: () => { const lv = CUR.songLevel(s.id, 'full'); if (GQ.preview.playing(lv)) GQ.preview.stop(); else GQ.preview.play(lv); } }, '♪ Listen'),
             h('button.btn.small', { onclick: () => UI.go('#/lesson/song-' + s.id + '-riff') }, 'Riff only'),
             h('button.btn.small.primary', { onclick: () => UI.go('#/lesson/song-' + s.id + '-full') }, 'Full song'),
             best ? h('span.small.muted', null, 'Best ' + best + '%') : null)));
       }
     }
     draw();
+    const mark = () => { for (const b of grid.querySelectorAll('.listen')) { const on = GQ.preview.playing(CUR.songLevel(b.dataset.song, 'full')); b.textContent = on ? '■ Stop' : '♪ Listen'; b.classList.toggle('on', on); } };
+    const offs = ['start', 'stop', 'end'].map((e) => GQ.preview.on(e, mark));
+    return { destroy() { GQ.preview.stop(); offs.forEach((f) => f()); } };
   };
 
   // ---------- Progress (REQ-SC-3) ----------

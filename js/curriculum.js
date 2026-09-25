@@ -231,6 +231,9 @@
   u = U(14, 'Songs', 'Traditional, public-domain and original pieces. Pick riff or full song in the library.');
   for (const s of GQ.SONGS.slice().sort((a, b) => a.difficulty - b.difficulty)) songLevel(u, s.id, 'full');
 
+  // ---------- extra levels (curriculum-extra.js), appended so existing level ids never change ----------
+  if (GQ.addExtraLevels) GQ.addExtraLevels({ units, L, rep, run, pent, seq3, randomMelody, rhythmMelody, barsOfEighths, T, STD });
+
   // ---------- index ----------
   const C = (GQ.curriculum = { units, levels: [] });
   for (const un of units) for (const lv of un.levels) C.levels.push(lv);

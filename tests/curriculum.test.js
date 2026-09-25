@@ -1,6 +1,6 @@
 // Every level must parse cleanly, stay on the neck, and have bar lines that land on bar boundaries.
 const { load } = require('./harness.js');
-const GQ = load('util', 'theory', 'chords', 'notation', 'store', 'songs', 'curriculum');
+const GQ = load('util', 'theory', 'chords', 'notation', 'store', 'songs', 'songs-extra', 'curriculum-extra', 'curriculum');
 const C = GQ.curriculum;
 let bad = 0;
 const all = C.levels.concat(GQ.SONGS.flatMap((s) => [C.songLevel(s.id, 'riff'), C.songLevel(s.id, 'full')]));

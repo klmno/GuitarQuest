@@ -23,7 +23,7 @@ const URL = process.argv[2] || 'http://localhost:8777/index.html';
   await p.click('.profilechip');
   await p.waitForSelector('.profiles');
   const cards = await p.$$eval('.profile:not(.add)', (els) => els.map((e) => e.querySelector('.pname').textContent + ':' + e.querySelector('.pstats b').textContent));
-  check(cards.includes('Player 1:2/140') && cards.includes('Ana:1/140'), 'each profile card shows its own progress ' + JSON.stringify(cards));
+  check(cards.some((c) => /^Player 1:2\//.test(c)) && cards.some((c) => /^Ana:1\//.test(c)), 'each profile card shows its own progress ' + JSON.stringify(cards));
   await p.screenshot({ path: __dirname + '/shots/12-profiles.png' });
   await p.click('text=Switch to Player 1');
   await p.waitForSelector('.unit');

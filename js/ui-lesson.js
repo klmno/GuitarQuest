@@ -32,13 +32,14 @@
     // ---------- toolbar ----------
     const playBtn = h('button.btn.primary.big', { onclick: toggle }, '▶ Start');
     const againBtn = h('button.btn', { onclick: () => restart() }, '↺ Again');
+    const listenBtn = h('button.btn', { onclick: () => listen(), title: 'Hear how it should sound before you play' }, '♪ Listen');
     const tempoLbl = h('span.tempo');
     const lockBtn = h('button.btn', { onclick: () => setLock(!(lesson ? lesson.lock : s.practiceLock)), title: 'Hold on each note until it is played' }, 'Lock');
     const loopBtn = h('button.btn', { onclick: () => { loopBar.hidden = !loopBar.hidden; loopBtn.classList.toggle('on', !loopBar.hidden); } }, '⟲ Loop');
     const viewBtns = ['fretboard', 'highway', 'tab', 'staff'].map((k) => h('button.btn.small', { class: views[k] ? 'on' : '', onclick: (e) => { views[k] = !views[k]; e.target.classList.toggle('on', views[k]); layout(); } }, { fretboard: 'Fretboard', highway: 'Highway', tab: 'Tab', staff: 'Notation' }[k]));
     const posSel = hasPitchTokens ? h('select', { title: 'Position lock (REQ-POS-4)', onchange: (e) => { lockPos = e.target.value === '' ? null : +e.target.value; store.setSetting('positionLock', lockPos != null); build(); } },
       h('option', { value: '' }, 'Any position'), ...[0, 2, 5, 7, 9, 12].map((p) => h('option', { value: p, selected: lockPos === p }, p === 0 ? 'Open position' : 'Position ' + p))) : null;
-    const toolbar = h('div.toolbar', null, playBtn, againBtn, h('span.sep'),
+    const toolbar = h('div.toolbar', null, playBtn, againBtn, listenBtn, h('span.sep'),
       UI.modeSeg((m) => { mode = m; if (lesson && lesson.state === 'playing') lesson.stop(); build(); }), h('span.sep'),
       h('button.btn.small', { onclick: () => tempo(-0.05), title: 'Slower' }, '−'), tempoLbl, h('button.btn.small', { onclick: () => tempo(0.05), title: 'Faster' }, '+'),
       h('span.sep'), lockBtn, loopBtn, posSel, h('span.sep'), ...viewBtns);
@@ -114,7 +115,18 @@
       if (b.length) notices.append(...b);
       else if (lesson && lesson.loop) notices.append(UI.banner('info', 'Loop practice is not scored.'));
     }
+    function listen() {
+      const PV = GQ.preview;
+      if (PV.playing(level)) { PV.stop(); return; }
+      if (lesson && lesson.state === 'playing') lesson.pause();
+      if (overlay) { overlay.remove(); overlay = null; }
+      const lp = lesson && lesson.loop;
+      PV.play(level, { bpm: lesson.bpm * lesson.tempo, lockPos, from: lp ? lp.a : 0, to: lp ? lp.b : undefined });
+    }
+    const pvOff = [GQ.preview.on('start', pvState), GQ.preview.on('stop', pvState), GQ.preview.on('end', pvState)];
+    function pvState() { const on = GQ.preview.playing(level); listenBtn.textContent = on ? '■ Stop listening' : '♪ Listen'; listenBtn.classList.toggle('on', on); }
     function toggle() {
+      GQ.preview.stop();
       if (!A.ctx) { say('Connect the guitar first.', 'warn'); return; }
       if (lesson.state === 'playing') { lesson.pause(); return; }
       if (overlay) { overlay.remove(); overlay = null; }
@@ -175,7 +187,8 @@
     UI.draw = function (now) {
       if (!lesson) return;
       const st = store.settings(), size = st.displaySize || 1, lefty = st.leftHanded;
-      const pos = lesson.state === 'ready' ? -0.5 : lesson.displayPos();
+      const pv = GQ.preview.playing(level) ? GQ.preview.pos() : null;
+      const pos = pv != null ? pv : lesson.state === 'ready' ? -0.5 : lesson.displayPos();
       const events = lesson.events;
       const setup = lesson.setup, names = T.stringNames(setup);
       if (views.highway) R.highway(hw, { events, pos, ahead: 4, results: lesson.results, lefty, size, beatsPerBar: lesson.bpb, names });
@@ -184,7 +197,7 @@
 
       // current and upcoming targets
       const tg = lesson.targets;
-      let k = lesson.waitMode && lesson.state === 'playing' ? lesson.nextIdx : tg.findIndex((e) => e.beat + e.dur > pos + 0.02 && !lesson.results.has(e.i));
+      let k = pv == null && lesson.waitMode && lesson.state === 'playing' ? lesson.nextIdx : tg.findIndex((e) => e.beat + e.dur > pos + 0.02 && !lesson.results.has(e.i));
       if (k < 0) k = tg.length;
       const cur = tg[k];
       // chord box: current chord, or the next one from two beats before the change (REQ-UI-5)
@@ -249,7 +262,7 @@
     showBlockers();
     if (level.ladder) loopBtn.classList.add('on');
     return {
-      destroy() { if (lesson) lesson.stop(); if (overlay) overlay.remove(); clearTimeout(autoTimer); },
+      destroy() { if (lesson) lesson.stop(); if (overlay) overlay.remove(); clearTimeout(autoTimer); GQ.preview.stop(); pvOff.forEach((f) => f()); },
       onAction(a) {
         if (a === 'toggle') toggle();
         else if (a === 'again') restart();

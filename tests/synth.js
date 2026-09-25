@@ -1,7 +1,7 @@
 // Karplus-Strong plucked string, with optional hum, noise, and soft-clip "crunch"
 function ks(freq, sr, dur, amp=0.5, seed=1){
   const N = Math.round(dur*sr), out = new Float32Array(N);
-  const L = sr/freq, Li = Math.floor(L), frac = L - Li;
+  const L = sr/freq, Li = Math.floor(L + 0.4), frac = L + 0.5 - Li; // loop delay = Li - 0.5 + allpass
   const buf = new Float32Array(Li+2); let s = seed;
   const rnd=()=>{ s=(s*16807)%2147483647; return s/2147483647*2-1; };
   // pick position ~ 1/5 of string: comb the noise burst
