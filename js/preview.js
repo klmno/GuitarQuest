@@ -149,9 +149,8 @@
     const c = { ctx: base.ctx, out: amp.input, bus };
     const s = store.settings();
     const setup = { tuning: s.tuning, capo: s.capo };
-    const text = (level.repeat || 1) > 1 ? Array(level.repeat).fill(level.text).join(' | ') : level.text;
-    const parsed = N.parse(text, { setup, meter: level.meter, pos: opts.lockPos != null ? opts.lockPos : level.pos });
-    const bpm = opts.bpm || (level.ladder ? level.ladder.from : level.bpm || 80) * (opts.tempo || 1);
+    const parsed = N.parseLevel(level, { setup, pos: opts.lockPos != null ? opts.lockPos : undefined });
+    const bpm = opts.bpm || (level.ladder ? level.ladder.from : level.bpm || (parsed.meta && parsed.meta.bpm) || 80) * (opts.tempo || 1);
     const spb = 60 / bpm;
     const from = opts.from || 0, to = opts.to != null ? opts.to : parsed.totalBeats;
     const lead = parsed.beatsPerBar * spb;              // one bar of count-in clicks
@@ -186,14 +185,24 @@
     P.emit('stop', lv);
   };
   P.active = () => !!job;
+  // one plucked note right now (Creator: hear the note you clicked)
+  P.note = function (midi) {
+    try {
+      const base = context();
+      if (base.ctx.state === 'suspended') base.ctx.resume();
+      const amp = makeAmp(base.ctx); amp.output.connect(base.out);
+      noteAt({ ctx: base.ctx, out: amp.input }, base.ctx.currentTime + 0.01, midi, 0.9, { gain: 0.7 });
+      setTimeout(() => { try { amp.output.disconnect(); } catch { /* gone */ } }, 2500);
+    } catch { /* sound is optional */ }
+  };
   P.output = () => context(); // for tests: {ctx, out}
   // Render a level offline (used by tests and to check the tone): returns a Promise of an AudioBuffer
   P.render = function (level, seconds, sampleRate) {
     const sr = sampleRate || 48000, off = new OfflineAudioContext(2, Math.round(sr * seconds), sr);
     const amp = makeAmp(off); amp.output.connect(off.destination);
     const s = store.settings(), setup = { tuning: s.tuning, capo: s.capo };
-    const parsed = N.parse(level.text, { setup, meter: level.meter, pos: level.pos });
-    const spb = 60 / (level.bpm || 80), c = { ctx: off, out: amp.input };
+    const parsed = N.parseLevel(level, { setup });
+    const spb = 60 / (level.bpm || (parsed.meta && parsed.meta.bpm) || 80), c = { ctx: off, out: amp.input };
     for (const e of parsed.events) if (e.kind !== 'rest' && e.beat * spb < seconds) playEvent(c, e, 0.05 + e.beat * spb, spb, setup);
     return off.startRendering();
   };

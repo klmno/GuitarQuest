@@ -7,6 +7,7 @@
   // ---------- helpers ----------
   UI.stars = (n) => '★'.repeat(n) + '☆'.repeat(3 - n);
   UI.toast = function (text, ms) {
+    for (const old of document.querySelectorAll('.toast')) old.remove();
     const t = h('div.toast', { role: 'status' }, text);
     document.body.append(t);
     setTimeout(() => t.remove(), ms || 3200);
@@ -80,7 +81,7 @@
       h('span.dot'), h('span.label', null, 'No input'), h('span.mini', null, h('div')));
     UI.chip = chip;
     const nav = h('nav.nav', null,
-      ...[['learn', 'Learn'], ['songs', 'Songs'], ['tuner', 'Tuner'], ['progress', 'Progress'], ['settings', 'Settings']]
+      ...[['learn', 'Learn'], ['songs', 'Songs'], ['creator', 'Creator'], ['tuner', 'Tuner'], ['progress', 'Progress'], ['settings', 'Settings']]
         .map(([k, t]) => h('a', { href: '#/' + k, 'data-k': k }, t)));
     UI.nav = nav;
     UI.pchip = h('a.profilechip', { href: '#/profiles', title: 'Switch or manage profiles' });
@@ -115,7 +116,7 @@
     main.append(UI.alerts);
     const screen = UI.screens[name] || UI.screens.learn;
     UI.current = screen(main, parts.slice(1)) || {};
-    for (const a of UI.nav.querySelectorAll('a')) a.classList.toggle('on', a.dataset.k === name || (name === 'lesson' && a.dataset.k === 'learn'));
+    for (const a of UI.nav.querySelectorAll('a')) a.classList.toggle('on', a.dataset.k === name || (name === 'lesson' && a.dataset.k === (/song-custom-/.test(location.hash) ? 'songs' : 'learn')) || (name === 'help' && a.dataset.k === 'creator'));
     UI.pchip.classList.toggle('on', name === 'profiles');
     window.scrollTo(0, 0);
   }
@@ -183,15 +184,61 @@
   };
 
   // ---------- Songs (REQ-FN-4) ----------
-  UI.screens.songs = function (main) {
+  UI.download = function (name, text, type) {
+    const a = h('a', { href: URL.createObjectURL(new Blob([text], { type: type || 'text/plain' })), download: name });
+    document.body.append(a); a.click(); a.remove();
+  };
+  UI.fileName = (title, ext) => (title || 'song').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + ext;
+
+  UI.screens.songs = function (main, args) {
     const p = store.profile();
-    let cat = 'all';
-    const cats = ['all', 'folk', 'classical', 'blues', 'rock', 'original'];
-    const seg = h('div.seg', null, ...cats.map((c) => h('button', { class: c === cat ? 'on' : '', onclick: (e) => { cat = c; for (const b of seg.children) b.classList.toggle('on', b === e.target); draw(); } }, c[0].toUpperCase() + c.slice(1))));
+    let cat = args[0] === 'mine' ? 'mine' : 'all';
+    const cats = [['all', 'All'], ['mine', 'My songs'], ['folk', 'Folk'], ['classical', 'Classical'], ['blues', 'Blues'], ['rock', 'Rock'], ['original', 'Original']];
+    const seg = h('div.seg', null, ...cats.map(([c, t]) => h('button', { class: c === cat ? 'on' : '', 'data-cat': c, onclick: (e) => { cat = c; for (const b of seg.children) b.classList.toggle('on', b === e.target); draw(); } }, t)));
     const grid = h('div.songs');
-    main.append(h('div.hero', null, h('div', null, h('h2', null, 'Song library'), h('p.muted.small', null, 'Traditional, public-domain and original pieces only. The origin of each one is on its card.')), seg), grid);
+    const fileIn = h('input', { type: 'file', accept: '.abc,text/plain,text/vnd.abc', multiple: true, hidden: true, onchange: async (e) => {
+      let saved = 0; const failed = [];
+      for (const f of e.target.files) { const r = GQ.custom.importText(await f.text()); saved += r.saved.length; failed.push(...r.failed); }
+      e.target.value = '';
+      UI.toast(saved ? `Imported ${saved} song${saved > 1 ? 's' : ''} into My songs.` + (failed.length ? ` ${failed.length} could not be read: open them in the Creator to fix them.` : '') : 'Nothing imported: ' + (failed[0] ? failed[0].error : 'no tunes found.'), 6000);
+      cat = 'mine'; for (const b of seg.children) b.classList.toggle('on', b.dataset.cat === 'mine'); draw();
+    } });
+    main.append(
+      h('div.hero', null,
+        h('div', null, h('h2', null, 'Song library'), h('p.muted.small', null, 'Traditional, public-domain and original pieces, plus your own songs in My songs. The origin of each one is on its card.')),
+        h('div.row', null, h('button.btn.primary', { onclick: () => UI.go('#/creator') }, '+ New song'), h('button.btn', { onclick: () => fileIn.click() }, 'Import .abc'), fileIn,
+          h('a.btn.ghost', { href: '#/help' }, 'ABC help'))),
+      h('div', { style: { marginBottom: '1rem' } }, seg), grid);
+
+    const listenBtn = (key, levelFn) => h('button.btn.small.ghost.listen', { 'data-song': key, onclick: () => { const lv = levelFn(); if (GQ.preview.playing(lv)) GQ.preview.stop(); else GQ.preview.play(lv); } }, '♪ Listen');
+    function customCard(cs) {
+      const lv = GQ.abc.level(cs);
+      const r = p.levels[lv.id] || {};
+      const del = h('button.btn.small.ghost', { onclick: () => {
+        if (!del.dataset.sure) { del.dataset.sure = '1'; del.textContent = 'Delete this song?'; del.classList.add('danger'); setTimeout(() => { if (del.isConnected) { delete del.dataset.sure; del.textContent = 'Delete'; del.classList.remove('danger'); } }, 4000); return; }
+        GQ.custom.remove(cs.id); UI.toast('Deleted ' + cs.title + '.'); draw();
+      } }, 'Delete');
+      return h('div.card.song.mine', null,
+        h('div.row.spread', null, h('span.badge.good', null, 'my song'), h('span.badge', null, 'Level ' + cs.difficulty + ' · ' + '●'.repeat(cs.difficulty) + '○'.repeat(3 - cs.difficulty))),
+        h('h4', { style: { marginTop: '.5rem' } }, cs.title),
+        h('div.origin', null, [cs.composer, `${cs.key} · ${cs.meter} · ${cs.bars} bars · ${cs.notes} notes`].filter(Boolean).join(' · ')),
+        h('div.row', { style: { marginTop: '.6rem' } },
+          listenBtn('custom-' + cs.id, () => lv),
+          h('button.btn.small.primary', { onclick: () => UI.go('#/lesson/' + lv.id) }, 'Play'),
+          h('button.btn.small', { onclick: () => UI.go('#/creator/' + cs.id) }, 'Edit'),
+          h('button.btn.small.ghost', { onclick: () => UI.download(UI.fileName(cs.title, '.abc'), cs.abc) }, 'Export'), del,
+          r.best ? h('span.small.muted', null, 'Best ' + r.best + '%') : null));
+    }
     function draw() {
       grid.innerHTML = '';
+      if (cat === 'all' || cat === 'mine') {
+        const mine = GQ.custom.list().sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
+        for (const cs of mine) grid.append(customCard(cs));
+        if (cat === 'mine' && !mine.length) grid.append(h('div.card', null, h('h4', null, 'No songs of your own yet'),
+          h('p.small.muted', null, 'Write one in the Creator, or import an .abc file. ABC is a simple text format for music: see the help page.'),
+          h('div.row', null, h('button.btn.primary', { onclick: () => UI.go('#/creator') }, '+ New song'), h('a.btn.ghost', { href: '#/help' }, 'ABC help'))));
+      }
+      if (cat === 'mine') return mark();
       for (const s of GQ.SONGS.filter((x) => cat === 'all' || x.category === cat).sort((a, b) => a.difficulty - b.difficulty)) {
         const best = Math.max(0, ...['riff', 'full'].map((k) => (p.levels['song-' + s.id + '-' + k] || {}).best || 0), (p.levels[(CUR.levels.find((l) => l.song === s.id && l.unit === 14) || {}).id] || {}).best || 0);
         grid.append(h('div.card.song', null,
@@ -199,14 +246,15 @@
           h('h4', { style: { marginTop: '.5rem' } }, s.title),
           h('div.origin', null, s.origin),
           h('div.row', { style: { marginTop: '.6rem' } },
-            h('button.btn.small.ghost.listen', { 'data-song': s.id, onclick: () => { const lv = CUR.songLevel(s.id, 'full'); if (GQ.preview.playing(lv)) GQ.preview.stop(); else GQ.preview.play(lv); } }, '♪ Listen'),
+            listenBtn(s.id, () => CUR.songLevel(s.id, 'full')),
             h('button.btn.small', { onclick: () => UI.go('#/lesson/song-' + s.id + '-riff') }, 'Riff only'),
             h('button.btn.small.primary', { onclick: () => UI.go('#/lesson/song-' + s.id + '-full') }, 'Full song'),
             best ? h('span.small.muted', null, 'Best ' + best + '%') : null)));
       }
+      mark();
     }
+    function mark() { for (const b of grid.querySelectorAll('.listen')) { const on = GQ.preview.playing(CUR.songLevel(b.dataset.song, 'full')); b.textContent = on ? '■ Stop' : '♪ Listen'; b.classList.toggle('on', on); } }
     draw();
-    const mark = () => { for (const b of grid.querySelectorAll('.listen')) { const on = GQ.preview.playing(CUR.songLevel(b.dataset.song, 'full')); b.textContent = on ? '■ Stop' : '♪ Listen'; b.classList.toggle('on', on); } };
     const offs = ['start', 'stop', 'end'].map((e) => GQ.preview.on(e, mark));
     return { destroy() { GQ.preview.stop(); offs.forEach((f) => f()); } };
   };

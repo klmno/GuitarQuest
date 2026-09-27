@@ -34,6 +34,7 @@ The version is in `js/version.js` and shows in Settings > About and in the foote
 | Latency calibration, offset subtracted before timing is scored | `js/audio.js` | REQ-DET-4 |
 | Beginner (waits), Intermediate, Advanced; practice lock; loop with tempo ramp; metronome, count-in, backing tracks | `js/lesson.js`, `js/sound.js` | REQ-FN-2, 3, 5, 6 |
 | 294 levels in 14 units, 60 songs (traditional, public domain or original, origin on every card) | `js/curriculum.js`, `js/curriculum-extra.js`, `js/songs.js`, `js/songs-extra.js` | REQ-FN-1, 4, REQ-NF-6 |
+| Creator: write songs in ABC with fields, note-length buttons, a clickable fretboard or notes played on the guitar; live tab, notation, Listen and error checking; saved to this browser and listed under Songs > My songs with Play, Edit, Export and Delete; Import .abc files (several tunes per file) | `js/abc.js`, `js/custom.js`, `js/ui-creator.js`, `js/ui-help.js` | |
 | Note steps: play any lesson or song with 10%, 20% ... 100% of its notes (strongest beats first, each step adding to the last); the score is capped at the step, and a step is cleared at 80% | `js/steps.js`, `js/ui-lesson.js` | |
 | Listen: hear any lesson or song first with a synthesised electric guitar (pickup, amp, cabinet and room; clean or crunch), with the playhead moving on the highway, tab and notation | `js/preview.js` | |
 | Notes picked while others still ring: the ringing notes are cancelled with comb filters before the new pitch is measured, and a new strum's chord uses only the energy it added | `js/worklet.js` | REQ-DET-1, 5, 6 |
@@ -61,7 +62,7 @@ E4 F#3 Bb3                          pitches, placed on the neck in the level's p
 node tests/run.js                        # detector accuracy, notes and chords over ringing strings, every level parses and fits its bars
 node tests/make-wav.js /tmp/guitar.wav   # synthesized test recording
 npm i --no-save playwright               # only needed for the browser test
-python3 -m http.server 8777 & node tests/browser.test.js && node tests/progress.test.js && node tests/profiles.test.js && node tests/preview.test.js && node tests/steps-ui.test.js
+python3 -m http.server 8777 & node tests/browser.test.js && node tests/progress.test.js && node tests/profiles.test.js && node tests/preview.test.js && node tests/steps-ui.test.js && node tests/creator.test.js
 ```
 
 The detector tests use synthesized plucked strings, clean and overdriven:

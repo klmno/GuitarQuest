@@ -111,6 +111,14 @@
     return { events, totalBeats: beat, beatsPerBar, bars: Math.ceil(beat / beatsPerBar - 1e-6), errors, pos, barMarks };
   };
 
+  // Events for any level: lesson notation, or an ABC tune (custom songs)
+  N.parseLevel = function (level, opts) {
+    opts = opts || {};
+    if (level.abc) return GQ.abc.parse(level.abc, { setup: opts.setup, pos: opts.pos != null && opts.pos !== level.pos ? opts.pos : undefined });
+    const text = (level.repeat || 1) > 1 ? Array(level.repeat).fill(level.text).join(' | ') : level.text;
+    return N.parse(text, { setup: opts.setup, meter: level.meter, pos: opts.pos != null ? opts.pos : level.pos });
+  };
+
   // Expected pitches of an event (with bends: the target pitch after the bend)
   N.midis = function (ev, setup) {
     return ev.notes.filter((n) => !n.dead).map((n) => T.midiAt(n.string, n.fret, setup) + ((ev.tech && ev.tech.bend) || 0));

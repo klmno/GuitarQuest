@@ -23,10 +23,11 @@
     const nextLv = CUR.next(level.id);
     const head = h('div.lesson-head', null,
       h('div', null,
-        h('div.small.muted', null, unit ? `Unit ${unit.id} · ${unit.title} · level ${level.n}` : 'Song'),
+        h('div.small.muted', null, unit && level.n ? `Unit ${unit.id} · ${unit.title} · level ${level.n}` : level.custom ? 'My song' : 'Song'),
         h('h2', null, level.title),
         h('p', null, level.desc || '')),
-      h('div.row', null, h('button.btn.ghost', { onclick: () => UI.go('#/learn') }, '← Levels'),
+      h('div.row', null, level.custom ? h('button.btn', { onclick: () => UI.go('#/creator/' + level.customId) }, 'Edit in Creator') : null,
+        h('button.btn.ghost', { onclick: () => UI.go(level.custom ? '#/songs/mine' : '#/learn') }, level.custom ? '← My songs' : '← Levels'),
         nextLv ? h('button.btn', { onclick: () => UI.go('#/lesson/' + nextLv.id) }, 'Next level →') : null));
 
     // ---------- toolbar ----------
@@ -218,7 +219,7 @@
     }
 
     // ---------- drawing ----------
-    const fw = R.fretWindow(N.parse(level.text, { pos: lockPos != null ? lockPos : level.pos }).events, lockPos, lockPos != null ? lockPos + 4 : null);
+    const fw = R.fretWindow(N.parseLevel(level, { pos: lockPos != null ? lockPos : undefined }).events, lockPos, lockPos != null ? lockPos + 4 : null);
     UI.draw = function (now) {
       if (!lesson) return;
       const st = store.settings(), size = st.displaySize || 1, lefty = st.leftHanded;

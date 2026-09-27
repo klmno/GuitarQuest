@@ -240,6 +240,7 @@
   C.byId = (id) => C.levels.find((l) => l.id === id);
   C.next = (id) => { const i = C.levels.findIndex((l) => l.id === id); return i >= 0 ? C.levels[i + 1] || null : null; };
   C.songLevel = function (songId, part) {
+    if (/^custom-/.test(songId)) { const cs = GQ.custom && GQ.custom.get(songId.slice(7)); return cs ? GQ.abc.level(cs) : null; }
     const s = GQ.SONGS.find((x) => x.id === songId);
     if (!s) return null;
     return { id: 'song-' + songId + '-' + part, unit: 14, title: s.title + (part === 'riff' ? ' (riff)' : ''), desc: 'Origin: ' + s.origin + '.', text: s[part],

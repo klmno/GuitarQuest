@@ -108,6 +108,22 @@
       g.beginPath(); g.arc(x, y, r + 7, 0, 7); g.stroke(); g.setLineDash([]);
     }
   };
+  // Which string and fret is at (x, y) on a fretboard drawn with the same opts (for clicking)
+  R.fretboardHit = function (cv, opts, x, y) {
+    const w = cv.clientWidth, h = cv.clientHeight, size = opts.size || 1;
+    const lo = opts.lo || 0, hi = Math.max(lo + 4, opts.hi || 12);
+    const padL = 34 * size, padR = 14, padT = 16 * size, padB = 20 * size;
+    const nutX = padL + (lo === 0 ? 26 * size : 0);
+    const W = w - nutX - padR, H = h - padT - padB;
+    const span = (f) => 1 - Math.pow(2, -f / 12);
+    const fx0 = (f) => nutX + W * (span(f) - span(lo)) / (span(hi) - span(lo));
+    const xx = opts.lefty ? w - x : x;
+    const string = GQ.clamp(Math.round((y - padT) / (H / 5)) + 1, 1, 6);
+    if (lo === 0 && xx < nutX + 4) return { string, fret: 0 };
+    for (let f = Math.max(1, lo + 1); f <= hi; f++) if (xx <= fx0(f)) return { string, fret: f };
+    return null;
+  };
+
   // choose a fret window that shows everything in `events`
   R.fretWindow = function (events, lockLo, lockHi) {
     let mn = 99, mx = 0;

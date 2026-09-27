@@ -17,8 +17,7 @@
       this.setup = { tuning: s.tuning, capo: s.capo };
       this.a4 = s.a4 || 440;
       this.lockPos = opts.lockPos != null ? opts.lockPos : null;
-      const text = (level.repeat || 1) > 1 ? Array(level.repeat).fill(level.text).join(' | ') : level.text;
-      this.parsed = N.parse(text, { setup: this.setup, meter: level.meter, pos: this.lockPos != null ? this.lockPos : level.pos });
+      this.parsed = N.parseLevel(level, { setup: this.setup, pos: this.lockPos != null ? this.lockPos : undefined });
       this.events = this.parsed.events;
       this.step = opts.step || 100;                       // % of the notes to play (GQ.steps)
       GQ.steps.apply(this.events, this.parsed.beatsPerBar, this.step);
@@ -219,7 +218,7 @@
 
     chordAt(beat) {
       let c = null;
-      for (const e of this.events) { if (e.beat > beat + 1e-6) break; if (e.chord) c = e.chord; }
+      for (const e of this.events) { if (e.beat > beat + 1e-6) break; if (e.chord || e.backChord) c = e.chord || e.backChord; }
       if (!c && this.level.chords) { const k = Math.floor(beat / this.bpb) % this.level.chords.length; c = C.get(this.level.chords[k]); }
       return c;
     }
