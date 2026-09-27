@@ -174,6 +174,7 @@
           return h('button', { class: 'lvl' + (r && r.stars ? ' passed' : '') + (l.id === nextId ? ' next' : ''), onclick: () => UI.go('#/lesson/' + l.id) },
             h('span.num', null, u.id + '.' + l.n + (r && r.best ? ' · ' + r.best + '%' : '')), h('span.t', null, l.title),
             r && r.stars ? h('span.stars', null, UI.stars(r.stars))
+              : GQ.steps.progress(l.id).cleared ? h('span.practised', { title: 'Highest note step cleared' }, 'step ' + GQ.steps.progress(l.id).cleared + '% cleared')
               : l.id in practised ? h('span.practised', { title: 'Played without a score (not tuned, or input not confirmed)' }, 'practised · ' + practised[l.id] + '%')
               : h('span.stars', null, UI.stars(0)));
         })));

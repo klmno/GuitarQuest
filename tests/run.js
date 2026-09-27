@@ -1,7 +1,7 @@
 // Runs the Node tests (no install needed). The browser test needs Playwright: see README.
 const { execFileSync } = require('child_process');
 let failed = 0;
-for (const t of ['notes', 'chords', 'overlap', 'chords-overlap', 'curriculum']) {
+for (const t of ['notes', 'chords', 'overlap', 'chords-overlap', 'curriculum', 'steps']) {
   try { process.stdout.write(execFileSync(process.execPath, [__dirname + '/' + t + '.test.js']).toString()); }
   catch (e) { failed++; process.stdout.write((e.stdout || '').toString()); console.log('FAILED: ' + t); }
 }

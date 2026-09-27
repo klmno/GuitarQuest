@@ -20,7 +20,9 @@
       const text = (level.repeat || 1) > 1 ? Array(level.repeat).fill(level.text).join(' | ') : level.text;
       this.parsed = N.parse(text, { setup: this.setup, meter: level.meter, pos: this.lockPos != null ? this.lockPos : level.pos });
       this.events = this.parsed.events;
-      this.targets = this.events.filter((e) => e.kind !== 'rest');
+      this.step = opts.step || 100;                       // % of the notes to play (GQ.steps)
+      GQ.steps.apply(this.events, this.parsed.beatsPerBar, this.step);
+      this.targets = this.events.filter((e) => e.kind !== 'rest' && !e.ghost);
       this.bpb = this.parsed.beatsPerBar;
       this.totalBeats = this.parsed.totalBeats;
       this.bpm = level.bpm || 80;
@@ -423,7 +425,10 @@
         else if (e.kind === 'note') misses.push(T.midiName(this.expMidis(e)[0]));
       });
       const scored = this.scored && !sum.inputProblem;
-      const run = Object.assign({}, sum, { level: this.level.id, mode: this.mode, scored, misses, chordMisses, changes: this.changes,
+      // a step with part of the notes can score at most that part (e.g. 40% of the notes: 40 max)
+      sum.rawScore = sum.score;
+      if (this.step < 100) { sum.score = Math.round((sum.score * this.step) / 100); if (!sum.inputProblem) sum.stars = SC.stars(sum.score); }
+      const run = Object.assign({}, sum, { step: this.step, level: this.level.id, mode: this.mode, scored, misses, chordMisses, changes: this.changes,
         reason: sum.inputProblem ? 'More than a fifth of the notes were unclear, so this run is not scored. Check the input level and the noise gate.' : this.unscoredReason });
       if (!this.loop) store.recordRun(run);
       this.emit('state', this.state);

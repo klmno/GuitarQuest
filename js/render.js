@@ -147,7 +147,7 @@
       if (e.beat > opts.pos + ahead || e.beat + e.dur < opts.pos - 1.2) continue;
       const y = Y(e.beat), st = resState(opts, e);
       const past = e.beat < opts.pos - 0.05;
-      g.globalAlpha = past ? 0.45 : 1;
+      g.globalAlpha = e.ghost ? 0.14 : past ? 0.45 : 1;
       if (e.kind === 'chord' && e.chordName) {
         const xs = e.notes.map((n) => laneX(n.string));
         g.fillStyle = stateColor(st, c) || 'rgba(240,165,58,.22)';
@@ -199,7 +199,7 @@
     for (const e of opts.events) {
       const x = X(e.beat);
       if (x < -40 || x > w + 40) continue;
-      const st = resState(opts, e), col = stateColor(st, c) || c.text;
+      const st = resState(opts, e), col = e.ghost ? 'rgba(139,147,158,.35)' : stateColor(st, c) || c.text;
       g.textAlign = 'center'; g.textBaseline = 'middle';
       if (e.kind === 'rest') { g.fillStyle = c.muted; g.font = `${12 * size}px system-ui`; g.fillText('𝄽', x, Ys(3.5)); continue; }
       if (e.kind === 'mute') { g.fillStyle = col; g.font = `700 ${13 * size}px ui-monospace`; for (let s = 1; s <= 6; s++) g.fillText('x', x, Ys(s)); }
@@ -249,7 +249,7 @@
     for (const e of opts.events) {
       const x = X(e.beat);
       if (x < 30 || x > w + 20) continue;
-      const st = resState(opts, e), col = stateColor(st, c) || c.text;
+      const st = resState(opts, e), col = e.ghost ? 'rgba(139,147,158,.3)' : stateColor(st, c) || c.text;
       if (e.kind === 'rest') { g.fillStyle = c.muted; g.font = `${14 * size}px serif`; g.textAlign = 'center'; g.fillText(e.dur >= 2 ? '▬' : '𝄽', x, Y(4)); continue; }
       const midis = N.midis(e, opts.setup).map((m) => m + 12); // guitar is written an octave above sounding pitch
       let minStep = 99, maxStep = -99;

@@ -105,6 +105,7 @@
       if (run.score > r.best) r.best = run.score;
       if (run.stars > r.stars) r.stars = run.stars;
       if (run.stars > 0 && !r.passedAt) r.passedAt = new Date().toISOString();
+      if (run.step) { r.steps = r.steps || {}; r.steps[run.step] = Math.max(r.steps[run.step] || 0, run.rawScore != null ? run.rawScore : run.score); }
       p.levels[run.level] = r;
       for (const n of run.misses || []) p.misses[n] = (p.misses[n] || 0) + 1;
       for (const n of run.chordMisses || []) p.chordMisses[n] = (p.chordMisses[n] || 0) + 1;
@@ -115,7 +116,7 @@
       }
     }
     p.history.push({ t: new Date().toISOString(), level: run.level, score: run.score, stars: run.stars, acc: run.accuracy,
-      timing: run.timingMs, unclear: run.unclear, mode: run.mode, scored: !!run.scored });
+      timing: run.timingMs, unclear: run.unclear, mode: run.mode, scored: !!run.scored, step: run.step || 100, raw: run.rawScore });
     if (p.history.length > 1000) p.history.splice(0, p.history.length - 1000);
     store.save();
     store.emit('progress', run);

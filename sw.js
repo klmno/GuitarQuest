@@ -17,6 +17,7 @@ const ASSETS = [
   'js/notation.js',
   'js/render.js',
   'js/scoring.js',
+  'js/steps.js',
   'js/songs.js',
   'js/songs-extra.js',
   'js/curriculum-extra.js',

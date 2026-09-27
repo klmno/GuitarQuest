@@ -44,6 +44,33 @@
       h('button.btn.small', { onclick: () => tempo(-0.05), title: 'Slower' }, '−'), tempoLbl, h('button.btn.small', { onclick: () => tempo(0.05), title: 'Faster' }, '+'),
       h('span.sep'), lockBtn, loopBtn, posSel, h('span.sep'), ...viewBtns);
 
+    // note steps: play 10% ... 100% of the notes, building up (GQ.steps)
+    let step = GQ.steps.startStep(level.id);
+    const stepBar = h('div.stepbar');
+    const stepInfo = h('span.small.muted');
+    function drawSteps() {
+      const pr = GQ.steps.progress(level.id);
+      stepBar.innerHTML = '';
+      stepBar.append(h('span.steplabel', { title: 'Play only some of the notes and build up. The score is capped at the percentage.' }, 'Notes'));
+      const seg = h('div.seg.steps');
+      for (const p of GQ.steps.LEVELS) {
+        const best = pr.best[p];
+        seg.append(h('button', { class: (p === step ? 'on ' : '') + (best >= GQ.steps.CLEAR ? 'cleared' : ''), title: best != null ? `Best ${best}% of these notes` : `${p}% of the notes`,
+          onclick: () => setStep(p) }, p + '%'));
+      }
+      stepBar.append(seg, stepInfo);
+      stepInfo.textContent = step < 100 ? `Playing ${lesson ? lesson.targets.length : ''} notes of ${lesson ? lesson.events.filter((e) => e.kind !== 'rest').length : ''}; the score is capped at ${step}%.` : 'All the notes.';
+    }
+    function setStep(p) {
+      step = p;
+      GQ.steps.setStart(level.id, p);
+      GQ.preview.stop();
+      if (overlay) { overlay.remove(); overlay = null; }
+      if (lesson && lesson.state === 'playing') lesson.stop();
+      build();
+      drawSteps();
+    }
+
     // loop bar (REQ-FN-6)
     const loopA = h('input', { type: 'number', min: 1, value: 1 }), loopB = h('input', { type: 'number', min: 1, value: 2 });
     const ramp = h('input', { type: 'checkbox', checked: true });
@@ -71,7 +98,7 @@
     const stage = h('div.stage', null, hwcol, maincol);
     const fbWrap = h('div.fb', { style: { marginTop: '.8rem' } }, fb);
     const notices = h('div');
-    main.append(head, notices, toolbar, loopBar, stage, fbWrap);
+    main.append(head, notices, toolbar, stepBar, loopBar, stage, fbWrap);
     if (!A.ctx) notices.append(h('div', { style: { marginBottom: '.8rem' } }, UI.connectCard(() => { notices.innerHTML = ''; build(); showBlockers(); })));
 
     function layout() {
@@ -84,7 +111,7 @@
     function build() {
       if (lesson) lesson.stop();
       clearTimeout(autoTimer);
-      lesson = new GQ.Lesson(level, { mode, lockPos });
+      lesson = new GQ.Lesson(level, { mode, lockPos, step });
       if (level.ladder) { lesson.setTempo(level.ladder.from / level.bpm); lesson.setLoop(0, lesson.totalBeats, 0.05); loopInfo.textContent = 'Metronome ladder: tempo rises after each clean pass.'; }
       lesson.on('state', updateButtons);
       lesson.on('tempo', updateButtons);
@@ -121,7 +148,7 @@
       if (lesson && lesson.state === 'playing') lesson.pause();
       if (overlay) { overlay.remove(); overlay = null; }
       const lp = lesson && lesson.loop;
-      PV.play(level, { bpm: lesson.bpm * lesson.tempo, lockPos, from: lp ? lp.a : 0, to: lp ? lp.b : undefined });
+      PV.play(level, { bpm: lesson.bpm * lesson.tempo, lockPos, step, from: lp ? lp.a : 0, to: lp ? lp.b : undefined });
     }
     const pvOff = [GQ.preview.on('start', pvState), GQ.preview.on('stop', pvState), GQ.preview.on('end', pvState)];
     function pvState() { const on = GQ.preview.playing(level); listenBtn.textContent = on ? '■ Stop listening' : '♪ Listen'; listenBtn.classList.toggle('on', on); }
@@ -163,7 +190,9 @@
       const next = CUR.next(level.id);
       overlay = h('div.overlay', null, h('div.card.result', null,
         h('h2', null, run.inputProblem ? 'The input needs attention' : !run.scored ? 'Practice run (not scored)' : passed ? 'Level passed' : 'Keep going'),
-        run.inputProblem ? h('p', null, run.reason) : h('div', null, h('div.big', null, run.score + '%'), h('div.stars', null, UI.stars(run.stars))),
+        run.inputProblem ? h('p', null, run.reason) : h('div', null, h('div.big', null, run.score + '%'), h('div.stars', null, UI.stars(run.stars)),
+          run.step < 100 ? h('p.small', null, `You played ${run.rawScore}% of the notes in this ${run.step}% step right. The score is capped at ${run.step}%.` +
+            (run.rawScore >= GQ.steps.CLEAR ? ' Step cleared: add more notes.' : ` Reach ${GQ.steps.CLEAR}% to clear the step.`)) : null),
         h('div.grid3', null,
           h('div.stat', null, h('b', null, run.accuracy + '%'), h('span', null, 'notes right')),
           h('div.stat', null, h('b', null, run.timingMs != null ? '±' + run.timingMs + ' ms' : '–'), h('span', null, run.timingBias != null ? (run.timingBias > 0 ? 'late by ' : 'early by ') + Math.abs(run.timingBias) + ' ms on average' : 'timing')),
@@ -172,10 +201,16 @@
         run.changes && run.changes.length ? h('p.small.muted', null, 'Chord changes: average ' + (GQ.mean(run.changes.map((c) => c.ms)) / 1000).toFixed(2) + ' s') : null,
         h('div.row', { style: { justifyContent: 'center' } },
           h('button.btn', { onclick: () => restart() }, '↺ Again'),
-          next ? h('button.btn.primary', { onclick: () => UI.go('#/lesson/' + next.id) }, 'Next level →') : null,
+          run.step < 100 && run.rawScore >= GQ.steps.CLEAR && !run.inputProblem
+            ? h('button.btn.primary', { onclick: () => setStep(run.step + 10) }, `Next step: ${run.step + 10}% of the notes →`) : null,
+          next ? h('button.btn' + (run.step < 100 ? '' : '.primary'), { onclick: () => UI.go('#/lesson/' + next.id) }, 'Next level →') : null,
           h('button.btn.ghost', { onclick: () => { overlay.remove(); overlay = null; } }, 'Close'))));
       document.body.append(overlay);
-      if (passed && next && store.settings().autoAdvance) {
+      drawSteps();
+      if (run.step < 100 && run.rawScore >= GQ.steps.CLEAR && !run.inputProblem && store.settings().autoAdvance) {
+        overlay.firstChild.append(h('p.small.muted', null, `Next step (${run.step + 10}%) in 4 s…`));
+        autoTimer = setTimeout(() => setStep(run.step + 10), 4000);
+      } else if (passed && next && store.settings().autoAdvance) {
         const note = h('p.small.muted', null, 'Next level in 4 s…');
         overlay.firstChild.append(note);
         autoTimer = setTimeout(() => { if (overlay) { overlay.remove(); overlay = null; } UI.go('#/lesson/' + next.id); }, 4000);
@@ -259,6 +294,7 @@
     };
 
     build();
+    drawSteps();
     showBlockers();
     if (level.ladder) loopBtn.classList.add('on');
     return {

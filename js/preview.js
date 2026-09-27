@@ -156,7 +156,8 @@
     const from = opts.from || 0, to = opts.to != null ? opts.to : parsed.totalBeats;
     const lead = parsed.beatsPerBar * spb;              // one bar of count-in clicks
     const t0 = c.ctx.currentTime + 0.15 + lead - from * spb;
-    const events = parsed.events.filter((e) => e.kind !== 'rest' && e.beat >= from && e.beat < to);
+    if (opts.step && opts.step < 100) GQ.steps.apply(parsed.events, parsed.beatsPerBar, opts.step);
+    const events = parsed.events.filter((e) => e.kind !== 'rest' && !e.ghost && e.beat >= from && e.beat < to);
     let k = 0, beat = Math.floor(from) - parsed.beatsPerBar;
     job = { c, t0, spb, parsed, level, from, to, stopped: false };
     const myJob = job;
