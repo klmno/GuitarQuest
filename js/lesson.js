@@ -232,6 +232,8 @@
       this.heard = h;
       this.emit('heard', h);
       if (this.waitMode) return this.waitNote(m, h);
+      // a slur we can't confirm, or a pitch that may be an older note still ringing, is never a mistake (REQ-DET-6)
+      if (m.legato && this.pitchVerdictAny(h) !== 'ok') return;
       const t = m.onsetTime - A().offsetSec() - (m.legato ? 0.03 : 0);
       const cands = this.instances.filter((x) => !x.res && !x.bend && x.ev.kind === 'note' && Math.abs(t - x.time) <= x.win);
       if (!cands.length) {
@@ -253,6 +255,10 @@
       } else if (v === 'unclear') this.resolve(x, { state: 'unclear', points: 0, heard: h.name });
       else this.resolve(x, { state: 'wrong', points: 0, timingMs, heard: h.name, hint: this.positionHint(x.ev, h) });
     }
+    pitchVerdictAny(h) {
+      const now = A().ctx ? A().ctx.currentTime : 0;
+      return this.instances.some((x) => !x.res && x.ev.kind === 'note' && Math.abs(now - x.time) < 1 && this.pitchVerdict(x.ev, h) === 'ok') ? 'ok' : 'no';
+    }
     // ok | wrong | unclear | bend-start
     pitchVerdict(ev, h, m) {
       const exp = this.expMidis(ev)[0];
@@ -260,7 +266,7 @@
       const bend = ev.tech && ev.tech.bend;
       if (bend && h.midi === exp - bend) return 'bend-start';
       if (h.midi === exp) return 'ok';
-      if (Math.abs(h.midi - exp) === 12 || Math.abs(h.midi - exp) === 19 || (m && m.conf < 0.88)) return 'unclear'; // octave / twelfth: detector doubt
+      if ([12, 19, 24].includes(Math.abs(h.midi - exp)) || (m && (m.conf < 0.88 || m.ringing))) return 'unclear'; // octave / twelfth / maybe a ringing note: detector doubt
       return 'wrong';
     }
     positionHint(ev, h) {
@@ -345,6 +351,7 @@
       const tg = this.targets[this.nextIdx];
       if (!tg || tg.kind !== 'note') return;
       const v = this.pitchVerdict(tg, h, m);
+      if (m.legato && v !== 'ok') return; // unconfirmed slur: ignore rather than count an attempt
       if (v === 'ok') { this.trackDrift(tg, m); this.waitHit(tg, { cents: h.cents, heard: h.name }); }
       else if (v === 'bend-start') { this.bending = { startPerf: performance.now() }; this.emit('feedback', { kind: 'hint', text: 'Now bend it up to the target pitch.' }); }
       else if (v === 'unclear') this.emit('feedback', { kind: 'unclear', text: "I didn't hear that clearly. Try again." });

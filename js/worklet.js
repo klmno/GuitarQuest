@@ -14,6 +14,9 @@
  *   - noise-floor measurement on request                               REQ-DET-7
  *   - a 12-bin chroma vector over the 150 ms after each onset           REQ-DET-5
  *   - the level decay after each onset (short decay = palm mute)       REQ-DET-10
+ *   - notes still ringing when a new note is picked are cancelled with comb filters tuned to
+ *     their periods before the new pitch is measured, and the chroma of a new strum uses only
+ *     the energy that the strum added (positive spectral difference)
  */
 function guitarQuestWorklet() {
   'use strict';
@@ -115,6 +118,16 @@ function guitarQuestWorklet() {
       for (let i = 0; i < this.fftN; i++) { let r = 0; for (let b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b); this.rev[i] = r; }
       this.envEarly = 0; this.envLate = 0; this.envLateN = 0;
 
+      // ringing-note cancellation
+      this.recent = [];                 // recent stable notes {period (decimated samples), frame}
+      this.cancel = [];                 // periods to cancel after the latest onset
+      this.cancelAt = -1e12; this.cancelFor = Math.round(2.5 * this.sr);
+      this.MAXC = 3;
+      this.ext = new Float32Array(this.frameLen + this.MAXC * (this.tauMax + 3));
+      this.ext2 = new Float32Array(this.ext.length);
+      this.frameC = new Float32Array(this.frameLen);
+      this.preMag = new Float32Array(this.fftN / 2); this.hasPre = false;
+
       this.port.onmessage = (e) => this.onMsg(e.data);
     }
 
@@ -199,6 +212,10 @@ function guitarQuestWorklet() {
         this.onsetFrame = blockStart;
         this.awaiting = true;
         this.chromaPos = 0; this.chromaOnset = blockStart;
+        this.recent = this.recent.filter((r) => blockStart - r.frame < 3 * this.sr);
+        this.cancel = this.recent.slice(-this.MAXC).map((r) => r.period).filter((P) => this.stillRinging(P));
+        this.cancelAt = blockStart;
+        this.capturePre();
         this.envEarly = blockRms; this.envLate = 0; this.envLateN = 0;
         this.prevEst = null;
         this.port.postMessage({ type: 'onset', frame: blockStart, time: blockStart / this.sr, rmsDb: toDb(blockRms) });
@@ -227,6 +244,33 @@ function guitarQuestWorklet() {
       return true;
     }
 
+    // magnitude spectrum of the 150 ms before an onset: what was already ringing
+    capturePre() {
+      const n = this.chromaN, mask = this.ringSize - 1;
+      if (this.decWritten < n) { this.hasPre = false; return; }
+      let p = (this.ringPos - n) & mask;
+      const buf = this.chromaBuf;
+      for (let i = 0; i < n; i++) { buf[i] = this.ring[p]; p = (p + 1) & mask; }
+      this.fftMag(this.preMag);
+      this.hasPre = true;
+    }
+    fftMag(out) {
+      const N = this.fftN, n = this.chromaN, re = this.re, im = this.im, rev = this.rev;
+      for (let i = 0; i < N; i++) { const v = i < n ? this.chromaBuf[i] * this.hann[i] : 0; re[rev[i]] = v; im[rev[i]] = 0; }
+      for (let size = 2; size <= N; size <<= 1) {
+        const half = size >> 1, step = -2 * Math.PI / size;
+        for (let start = 0; start < N; start += size) {
+          for (let k = 0; k < half; k++) {
+            const a = step * k, wr = Math.cos(a), wi = Math.sin(a);
+            const i = start + k, j = i + half;
+            const tr = wr * re[j] - wi * im[j], ti = wr * im[j] + wi * re[j];
+            re[j] = re[i] - tr; im[j] = im[i] - ti; re[i] += tr; im[i] += ti;
+          }
+        }
+      }
+      for (let k = 0; k < N / 2; k++) out[k] = Math.sqrt(re[k] * re[k] + im[k] * im[k]);
+    }
+
     finishChroma() {
       const N = this.fftN, n = this.chromaN, re = this.re, im = this.im, rev = this.rev;
       for (let i = 0; i < N; i++) { const v = i < n ? this.chromaBuf[i] * this.hann[i] : 0; re[rev[i]] = v; im[rev[i]] = 0; }
@@ -245,6 +289,13 @@ function guitarQuestWorklet() {
       let total = 0;
       const mags = this.mags || (this.mags = new Float32Array(N / 2));
       for (let k = 0; k < N / 2; k++) mags[k] = Math.sqrt(re[k] * re[k] + im[k] * im[k]);
+      // keep only what the strum added, unless that removes almost everything (same chord again)
+      if (this.hasPre) {
+        let all = 0, added = 0;
+        const dif = this.dif || (this.dif = new Float32Array(N / 2));
+        for (let k = 0; k < N / 2; k++) { const v = mags[k] - 0.7 * this.preMag[k]; dif[k] = v > 0 ? v : 0; all += mags[k]; added += dif[k]; }
+        if (added > 0.3 * all) mags.set(dif);
+      }
       for (let k = 2; k < N / 2 - 1; k++) {
         const pc = this.binPc[k];
         if (pc < 0) continue;
@@ -285,13 +336,39 @@ function guitarQuestWorklet() {
       this.gateOpen = true;
       this.analyses++;
 
-      // YIN difference function on window f[off .. off+W+tau]
+      // Notes still ringing from before the last onset: comb-filter them out (x[n] - g*x[n-P] removes
+      // a note of period P and all its harmonics) so the new note is measured on its own.
+      let a = f;
+      this.usedCancel = false;
+      if (this.cancel.length && frameNow - this.cancelAt < this.cancelFor) {
+        const K = this.cancel.length, ext = len + K * (this.tauMax + 3);
+        if (this.decWritten >= ext) {
+          const x = this.ext;
+          let q = (this.ringPos - ext) & mask;
+          for (let j = 0; j < ext; j++) { x[j] = ring[q]; q = (q + 1) & mask; }
+          let start = 0;
+          for (const P of this.cancel) {
+            const Pi = Math.floor(P), fr = P - Pi, s0 = start + Pi + 1;
+            for (let j = ext - 1; j >= s0; j--) x[j] -= 0.98 * (x[j - Pi] * (1 - fr) + x[j - Pi - 1] * fr);
+            start = s0;
+          }
+          const fc = this.frameC;
+          for (let j = 0; j < len; j++) fc[j] = x[ext - len + j];
+          let ec = 0;
+          for (let j = 0; j < W; j++) { const v = fc[off + this.tauMax + j]; ec += v * v; }
+          // if the comb removed nearly everything, the new note shares its period with a ringing
+          // note (a repeat or an octave): measure the plain signal instead
+          if (ec > 0.12 * e) { a = fc; this.usedCancel = true; }
+        }
+      }
+
+      // YIN difference function on window a[off .. off+W+tau]
       const d = this.d, tMax = this.tauMax;
       d[0] = 0;
       for (let tau = 1; tau <= tMax + 1; tau++) {
         let s = 0;
         for (let j = 0; j < W; j++) {
-          const df = f[off + j] - f[off + j + tau];
+          const df = a[off + j] - a[off + j + tau];
           s += df * df;
         }
         d[tau] = s;
@@ -316,6 +393,24 @@ function guitarQuestWorklet() {
         for (let t = this.tauMin + 1; t <= tMax; t++) if (d[t] < d[best]) best = t;
         tau = best;
       }
+      // The comb could not be used because the new note shares its period with a ringing one.
+      // If the plain signal points at a ringing note's period P, the new note is usually P/2, P/3
+      // or P/4 (an octave or more above): take the shortest of those with a clear dip.
+      // The comb could not be used because the new note shares its period with a ringing one.
+      // If the plain signal points at a ringing note's period P, the new note is usually P/2, P/3
+      // or P/4 (an octave or more above): take the shortest of those with a clear dip.
+      if (!this.usedCancel && this.cancel.length && frameNow - this.cancelAt < this.cancelFor) {
+        const tied = this.cancel.some((P) => { const m = Math.round(tau / P); return m >= 1 && Math.abs(tau - m * P) < 0.03 * tau; });
+        if (tied) {
+          for (let k = 4; k >= 2; k--) {
+            const c = Math.round(tau / k);
+            if (c < this.tauMin + 1) continue;
+            let bi = c;
+            for (let t = Math.max(this.tauMin, c - 2); t <= Math.min(tMax, c + 2); t++) if (d[t] < d[bi]) bi = t;
+            if (d[bi] < 0.35) { tau = bi; break; }
+          }
+        }
+      }
       // parabolic interpolation
       let bt = tau;
       if (tau > 1 && tau < tMax + 1) {
@@ -329,6 +424,35 @@ function guitarQuestWorklet() {
       this.track(freq, conf, frameNow);
     }
 
+    // true when this pitch could also be a note that was still ringing (same pitch, or 2x/3x/4x apart):
+    // the lesson then treats a mismatch as "unclear" instead of a wrong note (REQ-DET-6)
+    relatedToRinging(freq) {
+      const per = this.srd / freq;
+      return this.cancel.some((P) => {
+        for (let k = 1; k <= 4; k++) {
+          if (Math.abs(per * k - P) < 0.03 * P || Math.abs(P * k - per) < 0.03 * per) return true;
+        }
+        return false;
+      });
+    }
+    // Is a note of period P audible just before the onset? (level above the gate and periodic at P)
+    stillRinging(P) {
+      const mask = this.ringSize - 1, n = 512, Pi = Math.floor(P), fr = P - Pi;
+      if (this.decWritten < n + P + 2) return false;
+      let xy = 0, xx = 0, yy = 0;
+      for (let j = 1; j <= n; j++) {
+        const i0 = (this.ringPos - j) & mask;
+        const x = this.ring[i0];
+        const y = this.ring[(i0 - Pi) & mask] * (1 - fr) + this.ring[(i0 - Pi - 1) & mask] * fr;
+        xy += x * y; xx += x * x; yy += y * y;
+      }
+      if (Math.sqrt(xx / n) < this.gateLin * 0.5) return false;
+      return xy / Math.sqrt(xx * yy + 1e-20) > 0.5;
+    }
+    remember(freq, frame) {
+      this.recent.push({ period: this.srd / freq, frame });
+      if (this.recent.length > 6) this.recent.shift();
+    }
     track(freq, conf, frameNow) {
       if (conf < this.confMin || freq < this.minF || freq > this.maxF) return;
       const m = toMidi(freq);
@@ -340,8 +464,10 @@ function guitarQuestWorklet() {
           this.awaiting = false;
           this.curMidi = Math.round(m);
           this.legatoRun = 0;
+          const ringing = this.relatedToRinging(freq);
+          this.remember(freq, frameNow);
           this.port.postMessage({ type: 'note', onsetFrame: this.onsetFrame, onsetTime: this.onsetFrame / this.sr, frame: frameNow,
-            detectMs: (frameNow - this.onsetFrame) / this.sr * 1000, freq, conf, legato: false });
+            detectMs: (frameNow - this.onsetFrame) / this.sr * 1000, freq, conf, legato: false, ringing });
         }
         this.prevEst = m;
         return;
@@ -351,8 +477,10 @@ function guitarQuestWorklet() {
       if (Math.abs(m - this.curMidi) > 0.6) {
         if (this.legatoRun > 0 && Math.abs(m - this.legatoMidi) < 0.3) this.legatoRun++;
         else { this.legatoRun = 1; this.legatoMidi = m; }
+        if (this.legatoRun >= 3 && frameNow - this.cancelAt < this.cancelFor && this.relatedToRinging(freq)) { this.legatoRun = 0; return; } // an old note still ringing, not a slur
         if (this.legatoRun >= 3) {
           this.curMidi = Math.round(m); this.legatoRun = 0;
+          this.remember(freq, frameNow);
           this.port.postMessage({ type: 'note', onsetFrame: null, onsetTime: frameNow / this.sr, frame: frameNow, detectMs: null, freq, conf, legato: true });
         }
       } else this.legatoRun = 0;

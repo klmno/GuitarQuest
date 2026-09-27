@@ -30,7 +30,8 @@ It is plain HTML, CSS and JavaScript: no build step, no framework and no depende
 | Latency calibration, offset subtracted before timing is scored | `js/audio.js` | REQ-DET-4 |
 | Beginner (waits), Intermediate, Advanced; practice lock; loop with tempo ramp; metronome, count-in, backing tracks | `js/lesson.js`, `js/sound.js` | REQ-FN-2, 3, 5, 6 |
 | 294 levels in 14 units, 60 songs (traditional, public domain or original, origin on every card) | `js/curriculum.js`, `js/curriculum-extra.js`, `js/songs.js`, `js/songs-extra.js` | REQ-FN-1, 4, REQ-NF-6 |
-| Listen: hear any lesson or song first (synthesised plucked string, strums, bends), with the playhead moving on the highway, tab and notation | `js/preview.js` | |
+| Listen: hear any lesson or song first with a synthesised electric guitar (pickup, amp, cabinet and room; clean or crunch), with the playhead moving on the highway, tab and notation | `js/preview.js` | |
+| Notes picked while others still ring: the ringing notes are cancelled with comb filters before the new pitch is measured, and a new strum's chord uses only the energy it added | `js/worklet.js` | REQ-DET-1, 5, 6 |
 | Fretboard with finger colours, falling-note highway, tab with rhythm and technique marks, standard notation, chord boxes shown before the change, live feedback | `js/render.js`, `js/ui-lesson.js` | REQ-UI-1..6 |
 | Left-handed mode, display size, alternative tunings and capo | Settings | REQ-UI-7, 8 |
 | Scoring out of 100 per note, stars at 60 / 80 / 95, progress, weak spots, chord-change speed, streak; profiles with their own progress and settings, a switcher in the top bar, "Who is playing?" at start-up, export and import | `js/scoring.js`, `js/store.js`, Progress | REQ-SC-1..4 |
@@ -52,7 +53,7 @@ E4 F#3 Bb3                          pitches, placed on the neck in the level's p
 ## Tests
 
 ```
-node tests/run.js                        # detector accuracy, chord matching, every level parses and fits its bars
+node tests/run.js                        # detector accuracy, notes and chords over ringing strings, every level parses and fits its bars
 node tests/make-wav.js /tmp/guitar.wav   # synthesized test recording
 npm i --no-save playwright               # only needed for the browser test
 python3 -m http.server 8777 & node tests/browser.test.js && node tests/progress.test.js && node tests/profiles.test.js && node tests/preview.test.js

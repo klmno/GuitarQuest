@@ -17,34 +17,75 @@
     return { ctx: own, out: own.master };
   }
 
-  // plucked string, cached per pitch
+  // Plucked string (Karplus-Strong), cached per pitch and tone. The electric tones add a magnetic
+  // pickup (a comb at the pickup position), a brighter loop filter and a long sustain; the amp,
+  // cabinet and room come after, in makeAmp().
+  const TONE = () => store.settings().previewTone || 'clean';
   function pluck(ctx, midi, muted) {
-    const key = ctx.sampleRate + '|' + midi + '|' + (muted ? 1 : 0);
+    const tone = TONE(), electric = tone !== 'acoustic';
+    const key = ctx.sampleRate + '|' + midi + '|' + (muted ? 1 : 0) + '|' + (electric ? 'e' : 'a');
     if (cache.has(key)) return cache.get(key);
     const sr = ctx.sampleRate, f = T.midiToFreq(midi, store.settings().a4);
-    const len = Math.round(sr * (muted ? 0.35 : 2.6));
+    const len = Math.round(sr * (muted ? 0.35 : electric ? 2.8 : 2.4));
     const buf = ctx.createBuffer(1, len, sr), out = buf.getChannelData(0);
-    // loop delay = Li - 0.5 (two-point average) + allpass delay, which must equal the period L
-    const L = sr / f, Li = Math.max(2, Math.floor(L + 0.4)), frac = L + 0.5 - Li;
+    // loop filter w*a + (1-w)*b delays by (1-w); loop delay = Li - (1-w) + allpass delay = period L
+    const w = electric ? 0.78 : 0.5;
+    const L = sr / f, Li = Math.max(2, Math.floor(L + (1 - w) - 0.1)), frac = L - Li + (1 - w);
     const line = new Float32Array(Li);
     let seed = midi * 7919 + 1;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 * 2 - 1; };
     for (let i = 0; i < Li; i++) line[i] = rnd();
-    const pp = Math.max(1, Math.round(Li / 5)), copy = line.slice();          // pick near the bridge
+    // pick position: a plectrum a little way from the bridge, then smooth the burst so the attack isn't scratchy
+    const pp = Math.max(1, Math.round(Li * (electric ? 0.14 : 0.2))), copy = line.slice();
     for (let i = 0; i < Li; i++) line[i] = copy[i] - copy[(i + pp) % Li];
-    const t60 = muted ? 0.12 : Math.max(0.8, 4 - (midi - 40) * 0.04);
+    if (electric) { let m = 0; for (let k = 0; k < 2; k++) for (let i = 0; i < Li; i++) { m += 0.5 * (line[i] - m); line[i] = m; } }
+    const t60 = muted ? 0.12 : electric ? Math.max(2.2, 6.5 - (midi - 40) * 0.07) : Math.max(0.8, 4 - (midi - 40) * 0.04);
     const decay = Math.pow(0.001, 1 / (f * t60));
     const C = (1 - frac) / (1 + frac);
-    let idx = 0, apx = 0, apy = 0, lp = 0;
+    const Dp = Math.max(1, Math.round(L * 0.23));               // neck-ish pickup position comb
+    const hist = new Float32Array(Dp + 1);
+    let idx = 0, apx = 0, apy = 0, lp = 0, hp = 0;
     for (let n = 0; n < len; n++) {
       const a = line[idx], b = line[(idx + 1) % Li];
-      const y = decay * 0.5 * (a + b);
+      const y = decay * (w * a + (1 - w) * b);
       const ap = C * y + apx - C * apy; apx = y; apy = ap;
-      lp += (muted ? 0.25 : 0.6) * (ap - lp);
-      out[n] = lp * 0.5; line[idx] = ap; idx = (idx + 1) % Li;
+      line[idx] = ap; idx = (idx + 1) % Li;
+      let v = ap;
+      if (electric) { const old = hist[n % (Dp + 1)]; hist[n % (Dp + 1)] = ap; v = ap - 0.85 * old; }
+      lp += (muted ? 0.25 : electric ? 0.45 : 0.6) * (v - lp);
+      hp = 0.995 * hp + lp;                                      // tiny DC guard
+      out[n] = (lp - hp * 0.005) * 0.5;
     }
     cache.set(key, buf);
     return buf;
+  }
+
+  // Amp, cabinet and room for the electric tones: preamp drive, a mid bump, a speaker roll-off and a short reverb
+  function makeAmp(ctx) {
+    const tone = TONE();
+    const input = ctx.createGain(), output = ctx.createGain();
+    if (tone === 'acoustic') { input.connect(output); return { input, output }; }
+    const crunch = tone === 'crunch';
+    const pre = ctx.createGain(); pre.gain.value = crunch ? 7 : 2.2;
+    const shaper = ctx.createWaveShaper();
+    const k = crunch ? 3.2 : 1.1, n = 2048, curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(k * x) / Math.tanh(k); }
+    shaper.curve = curve; shaper.oversample = '4x';
+    const hpf = ctx.createBiquadFilter(); hpf.type = 'highpass'; hpf.frequency.value = 85;
+    const mid = ctx.createBiquadFilter(); mid.type = 'peaking'; mid.frequency.value = 800; mid.Q.value = 0.8; mid.gain.value = crunch ? 4 : 2.5;
+    const scoop = ctx.createBiquadFilter(); scoop.type = 'peaking'; scoop.frequency.value = 2400; scoop.Q.value = 1; scoop.gain.value = -2;
+    const cab = ctx.createBiquadFilter(); cab.type = 'lowpass'; cab.frequency.value = crunch ? 4200 : 5200; cab.Q.value = 0.9;
+    const cab2 = ctx.createBiquadFilter(); cab2.type = 'lowpass'; cab2.frequency.value = 7000;
+    const post = ctx.createGain(); post.gain.value = crunch ? 0.32 : 0.55;
+    input.connect(pre).connect(shaper).connect(hpf).connect(mid).connect(scoop).connect(cab).connect(cab2).connect(post);
+    post.connect(output);
+    // small room: exponentially decaying noise impulse
+    const verb = ctx.createConvolver(), wet = ctx.createGain(); wet.gain.value = 0.16;
+    const irLen = Math.round(ctx.sampleRate * 1.3), ir = ctx.createBuffer(2, irLen, ctx.sampleRate);
+    for (let c2 = 0; c2 < 2; c2++) { const d = ir.getChannelData(c2); let sd = 99 + c2; for (let i = 0; i < irLen; i++) { sd = (sd * 16807) % 2147483647; d[i] = (sd / 2147483647 * 2 - 1) * Math.pow(1 - i / irLen, 3.2); } }
+    verb.buffer = ir;
+    post.connect(verb).connect(wet).connect(output);
+    return { input, output };
   }
 
   function noteAt(c, t, midi, dur, opts) {
@@ -104,7 +145,8 @@
     const base = context();
     if (base.ctx.state === 'suspended') base.ctx.resume();
     const bus = base.ctx.createGain(); bus.connect(base.out);      // one bus per preview, so Stop silences it at once
-    const c = { ctx: base.ctx, out: bus };
+    const amp = makeAmp(base.ctx); amp.output.connect(bus);
+    const c = { ctx: base.ctx, out: amp.input, bus };
     const s = store.settings();
     const setup = { tuning: s.tuning, capo: s.capo };
     const text = (level.repeat || 1) > 1 ? Array(level.repeat).fill(level.text).join(' | ') : level.text;
@@ -135,15 +177,25 @@
   P.stop = function () {
     if (!job) return;
     job.stopped = true; clearInterval(job.timer);
-    const { ctx, out } = job.c, now = ctx.currentTime;
-    out.gain.setValueAtTime(out.gain.value, now); out.gain.linearRampToValueAtTime(0, now + 0.06);
-    setTimeout(() => { try { out.disconnect(); } catch { /* gone */ } }, 600);
+    const { ctx, bus } = job.c, now = ctx.currentTime;
+    bus.gain.setValueAtTime(bus.gain.value, now); bus.gain.linearRampToValueAtTime(0, now + 0.06);
+    setTimeout(() => { try { bus.disconnect(); } catch { /* gone */ } }, 600);
     const lv = job.level;
     job = null;
     P.emit('stop', lv);
   };
   P.active = () => !!job;
   P.output = () => context(); // for tests: {ctx, out}
+  // Render a level offline (used by tests and to check the tone): returns a Promise of an AudioBuffer
+  P.render = function (level, seconds, sampleRate) {
+    const sr = sampleRate || 48000, off = new OfflineAudioContext(2, Math.round(sr * seconds), sr);
+    const amp = makeAmp(off); amp.output.connect(off.destination);
+    const s = store.settings(), setup = { tuning: s.tuning, capo: s.capo };
+    const parsed = N.parse(level.text, { setup, meter: level.meter, pos: level.pos });
+    const spb = 60 / (level.bpm || 80), c = { ctx: off, out: amp.input };
+    for (const e of parsed.events) if (e.kind !== 'rest' && e.beat * spb < seconds) playEvent(c, e, 0.05 + e.beat * spb, spb, setup);
+    return off.startRendering();
+  };
   P.playing = (level) => !!job && job.level && level && job.level.id === level.id;
   // current position in beats (for the highway, tab and notation playheads)
   P.pos = function () {

@@ -149,6 +149,8 @@
         h('div', null, h('label.inline', null, h('input', { type: 'checkbox', checked: s.metronome, onchange: set('metronome') }), 'Metronome'), vol('metronomeVol')),
         h('div', null, h('label.inline', null, h('input', { type: 'checkbox', checked: s.backing, onchange: set('backing') }), 'Backing tracks'), vol('backingVol')),
         h('div', null, h('label.inline', null, h('input', { type: 'checkbox', checked: s.monitor, onchange: set('monitor') }), 'Hear the guitar through this device'), vol('monitorVol')),
+        h('label.field', null, 'Listen button sound', h('select', { onchange: (e) => { store.setSetting('previewTone', e.target.value); GQ.preview.stop(); } },
+          ...[['clean', 'Electric guitar, clean'], ['crunch', 'Electric guitar, crunch'], ['acoustic', 'Plain plucked string']].map(([v, t]) => h('option', { value: v, selected: (s.previewTone || 'clean') === v }, t)))),
         h('label.field', null, 'Monitor tone', h('select', { onchange: set('ampTone') }, ...[['clean', 'Clean (lowest latency)'], ['warm', 'Warm'], ['crunch', 'Crunch']].map(([v, t]) => h('option', { value: v, selected: s.ampTone === v }, t))))),
       h('p.small.muted', null, 'Use headphones for monitoring, or leave it off and listen to the guitar’s own speaker. The direct input never hears the metronome or backing, so both can play out loud.')));
 
