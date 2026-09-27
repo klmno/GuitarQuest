@@ -1,12 +1,14 @@
 /* GuitarQuest service worker: cache-first so the app starts offline in under two seconds (REQ-PF-1, REQ-NF-3).
- * Bump VERSION whenever a file changes. */
-const VERSION = 'gq-v5';
+ * The cache is named after GQ_VERSION in js/version.js: bump that whenever a file changes. */
+importScripts('js/version.js');
+const VERSION = 'gq-' + self.GQ_VERSION;
 const ASSETS = [
   './',
   'index.html',
   'manifest.webmanifest',
   'css/app.css',
   'js/app.js',
+  'js/version.js',
   'js/audio.js',
   'js/chords.js',
   'js/controls.js',

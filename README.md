@@ -4,6 +4,10 @@ A practice app for electric guitar, built for the Enya Inspire and its direct US
 
 It is plain HTML, CSS and JavaScript: no build step, no framework and no dependencies (REQ-NF-5). Audio is analysed on the device and never uploaded (REQ-NF-4).
 
+## Versions
+
+The version is in `js/version.js` and shows in Settings > About and in the footer. Bump it (and add a line to its release notes) with every update: the offline cache in `sw.js` is named after it, so installed copies download the new files and show a "new version is ready" notice.
+
 ## Running it
 
 - **Mac, Chrome or Edge:** open `index.html` straight from the folder. It works from `file://`, but offline install needs a server.

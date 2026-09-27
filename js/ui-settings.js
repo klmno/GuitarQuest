@@ -171,6 +171,21 @@
       h('div.row', { style: { marginTop: '.6rem' } }, h('label.inline', null, h('input', { type: 'checkbox', checked: s.voice, disabled: !CT.voiceSupported, onchange: (e) => { store.setSetting('voice', e.target.checked); CT.setVoice(e.target.checked); } }),
         'Voice commands: "start", "stop", "again", "next", "slower", "faster", "lock"' + (CT.voiceSupported ? '' : ' (not supported in this browser)')))));
 
+    const upd = h('span.small.muted');
+    sections.unshift(h('section.card#about', null,
+      h('div.row.spread', null, h('h2', null, 'About'), h('span.badge.info', { title: 'Released ' + G.GQ_RELEASED }, 'Version ' + G.GQ_VERSION)),
+      h('p.small.muted', null, 'Released ' + G.GQ_RELEASED + '. The version number changes with every update, so you can tell when a new one has arrived.'),
+      h('ul.list', null, ...G.GQ_CHANGES.slice(0, 5).map(([v, d, t]) => h('li', null, h('span', null, t), h('span', null, 'v' + v)))),
+      'serviceWorker' in navigator && /^https?:$/.test(location.protocol)
+        ? h('div.row', { style: { marginTop: '.6rem' } }, h('button.btn.small', { onclick: async () => {
+            upd.textContent = 'Checking…';
+            try {
+              const reg = await navigator.serviceWorker.getRegistration();
+              if (reg) await reg.update();
+              upd.textContent = reg && (reg.installing || reg.waiting) ? 'An update is being installed. It will be ready in a moment.' : 'You have the latest version the server is offering.';
+            } catch { upd.textContent = 'Could not check right now (offline?).'; }
+          } }, 'Check for updates'), upd)
+        : h('p.small.muted', null, 'Opened from a file: reload the page to pick up changes in the folder.')));
     sections.push(h('section.card', null, h('h2', null, 'Privacy'), h('p', null, 'Audio is analysed on this device and never uploaded. There are no accounts, no analytics and no network requests after the app has loaded.')));
 
     main.append(h('div.grid2', null, ...sections));
