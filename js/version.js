@@ -2,9 +2,10 @@
  * also names the offline cache in sw.js, so installed copies pick up the new files. */
 (function (G) {
   'use strict';
-  G.GQ_VERSION = '1.7.0';
+  G.GQ_VERSION = '1.7.1';
   G.GQ_RELEASED = '2026-09-27';
   G.GQ_CHANGES = [
+    ['1.7.1', '2026-09-27', 'Creator lists only the first 10 problems, with the total count.'],
     ['1.7.0', '2026-09-27', 'Creator: write your own songs in ABC, hear and check them, and save them to My songs (with Edit, Export and Import .abc). New ABC help page.'],
     ['1.6.0', '2026-09-27', 'Note steps: play any lesson or song with 10% to 100% of its notes and build up; the score is capped at the step.'],
     ['1.5.0', '2026-09-27', 'Version number and release notes in Settings; notice when an update has been installed.'],

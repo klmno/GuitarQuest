@@ -6,6 +6,7 @@
   'use strict';
   const GQ = G.GQ, h = GQ.h, store = GQ.store, A = GQ.audio, T = GQ.theory, R = GQ.render, UI = GQ.ui, ABC = GQ.abc;
 
+  const MAX_SHOWN = 10;   // problems listed at once in the Creator
   const TEMPLATE = 'X:1\nT:My new song\nC:\nM:4/4\nL:1/8\nQ:1/4=90\nI:position 0\nK:C\n';
   UI.openInCreator = function (abc) { GQ.storage.set('creatorDraft', { id: null, abc, at: Date.now() }); UI.go('#/creator'); };
 
@@ -128,8 +129,14 @@
       setIfIdle(fPos, String(m.position)); setIfIdle(fOct, String(m.octave)); setIfIdle(fPlay, m.play);
       problemsEl.innerHTML = '';
       const noNotes = parsed.errors.length === 1 && /no notes/.test(parsed.errors[0]);
-      for (const p of parsed.problems) problemsEl.append(h('li.err', { onclick: () => gotoLine(p.line) }, (p.line ? 'Line ' + p.line + ': ' : '') + p.msg));
-      for (const w of parsed.warnings) problemsEl.append(h('li.warn', { onclick: () => gotoLine(w.line) }, (w.line ? 'Line ' + w.line + ': ' : '') + w.msg));
+      // errors first, then warnings; only the first MAX_SHOWN, with a count of the rest
+      const all = parsed.problems.map((x) => ({ ...x, cls: 'err' })).concat(parsed.warnings.map((x) => ({ ...x, cls: 'warn' })));
+      for (const x of all.slice(0, MAX_SHOWN)) problemsEl.append(h('li.' + x.cls, { onclick: () => gotoLine(x.line) }, (x.line ? 'Line ' + x.line + ': ' : '') + x.msg));
+      if (all.length > MAX_SHOWN) {
+        const ne = parsed.problems.length, nw = parsed.warnings.length;
+        const what = ne && nw ? `problems (${ne} error${ne > 1 ? 's' : ''}, ${nw} warning${nw > 1 ? 's' : ''})` : ne ? 'errors' : 'warnings';
+        problemsEl.append(h('li.more', null, `${MAX_SHOWN} out of ${all.length} ${what} shown. Fix these first: many of the others often go away with them.`));
+      }
       if (!parsed.problems.length && !parsed.warnings.length) problemsEl.append(h('li.ok', null, 'No problems found.'));
       if (noNotes) { problemsEl.innerHTML = ''; problemsEl.append(h('li.info', null, 'Add notes: click the fretboard, play them on your guitar, or type them after the K: line.')); }
       const notes = parsed.events.filter((e) => e.kind !== 'rest');

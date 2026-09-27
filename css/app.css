@@ -226,6 +226,7 @@ ul.problems li.err { background: #3a1b19; color: #ffb3ad; }
 ul.problems li.warn { background: #2e2a17; color: var(--warn); }
 ul.problems li.ok { color: var(--good); cursor: default; }
 ul.problems li.info { color: var(--info); cursor: default; }
+ul.problems li.more { color: var(--muted); cursor: default; font-style: italic; }
 .preview-card input[type=range] { width: 100%; }
 .card.song.mine { border-color: rgba(62,207,142,.45); }
 
