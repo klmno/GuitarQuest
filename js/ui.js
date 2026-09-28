@@ -81,7 +81,7 @@
       h('span.dot'), h('span.label', null, 'No input'), h('span.mini', null, h('div')));
     UI.chip = chip;
     const nav = h('nav.nav', null,
-      ...[['learn', 'Learn'], ['songs', 'Songs'], ['creator', 'Creator'], ['tuner', 'Tuner'], ['progress', 'Progress'], ['settings', 'Settings']]
+      ...[['learn', 'Learn'], ['songs', 'Songs'], ['practice', 'Practice'], ['creator', 'Creator'], ['tuner', 'Tuner'], ['progress', 'Progress'], ['settings', 'Settings']]
         .map(([k, t]) => h('a', { href: '#/' + k, 'data-k': k }, t)));
     UI.nav = nav;
     UI.pchip = h('a.profilechip', { href: '#/profiles', title: 'Switch or manage profiles' });
@@ -116,7 +116,7 @@
     main.append(UI.alerts);
     const screen = UI.screens[name] || UI.screens.learn;
     UI.current = screen(main, parts.slice(1)) || {};
-    for (const a of UI.nav.querySelectorAll('a')) a.classList.toggle('on', a.dataset.k === name || (name === 'lesson' && a.dataset.k === (/song-custom-/.test(location.hash) ? 'songs' : 'learn')) || (name === 'help' && a.dataset.k === 'creator'));
+    for (const a of UI.nav.querySelectorAll('a')) a.classList.toggle('on', a.dataset.k === name || (name === 'lesson' && a.dataset.k === (/song-custom-/.test(location.hash) ? 'songs' : /\/px-/.test(location.hash) ? 'practice' : 'learn')) || (name === 'help' && a.dataset.k === 'creator'));
     UI.pchip.classList.toggle('on', name === 'profiles');
     window.scrollTo(0, 0);
   }

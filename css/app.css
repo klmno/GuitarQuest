@@ -245,3 +245,9 @@ pre.abc { background: var(--canvas); border: 1px solid var(--line); border-radiu
 .example { margin-top: .6rem; }
 
 a.btn { text-decoration: none; color: inherit; }
+
+/* Practice room */
+.seg.wrap { flex-wrap: wrap; }
+.px-search { flex: 1 1 14rem; min-width: 12rem; padding: .45rem .7rem; border-radius: 8px; border: 1px solid var(--line); background: var(--panel, transparent); color: inherit; font: inherit; }
+.px .px-aka { font-size: .8rem; color: var(--accent, var(--info)); font-style: italic; }
+.px .px-desc { margin: .4rem 0 .2rem; min-height: 3.6em; }

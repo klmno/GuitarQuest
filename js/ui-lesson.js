@@ -23,12 +23,12 @@
     const nextLv = CUR.next(level.id);
     const head = h('div.lesson-head', null,
       h('div', null,
-        h('div.small.muted', null, unit && level.n ? `Unit ${unit.id} · ${unit.title} · level ${level.n}` : level.custom ? 'My song' : 'Song'),
+        h('div.small.muted', null, unit && level.n ? `Unit ${unit.id} · ${unit.title} · level ${level.n}` : level.practice ? 'Practice · ' + GQ.practice.catOf(level.cat)[1] + (level.aka ? ' · also called ' + level.aka : '') : level.custom ? 'My song' : 'Song'),
         h('h2', null, level.title),
         h('p', null, level.desc || '')),
       h('div.row', null, level.custom ? h('button.btn', { onclick: () => UI.go('#/creator/' + level.customId) }, 'Edit in Creator') : null,
-        h('button.btn.ghost', { onclick: () => UI.go(level.custom ? '#/songs/mine' : '#/learn') }, level.custom ? '← My songs' : '← Levels'),
-        nextLv ? h('button.btn', { onclick: () => UI.go('#/lesson/' + nextLv.id) }, 'Next level →') : null));
+        h('button.btn.ghost', { onclick: () => UI.go(level.custom ? '#/songs/mine' : level.practice ? '#/practice/' + level.cat : '#/learn') }, level.custom ? '← My songs' : level.practice ? '← Practice' : '← Levels'),
+        nextLv ? h('button.btn', { onclick: () => UI.go('#/lesson/' + nextLv.id) }, level.practice ? 'Next exercise →' : 'Next level →') : null));
 
     // ---------- toolbar ----------
     const playBtn = h('button.btn.primary.big', { onclick: toggle }, '▶ Start');
@@ -204,7 +204,7 @@
           h('button.btn', { onclick: () => restart() }, '↺ Again'),
           run.step < 100 && run.rawScore >= GQ.steps.CLEAR && !run.inputProblem
             ? h('button.btn.primary', { onclick: () => setStep(run.step + 10) }, `Next step: ${run.step + 10}% of the notes →`) : null,
-          next ? h('button.btn' + (run.step < 100 ? '' : '.primary'), { onclick: () => UI.go('#/lesson/' + next.id) }, 'Next level →') : null,
+          next ? h('button.btn' + (run.step < 100 ? '' : '.primary'), { onclick: () => UI.go('#/lesson/' + next.id) }, level.practice ? 'Next exercise →' : 'Next level →') : null,
           h('button.btn.ghost', { onclick: () => { overlay.remove(); overlay = null; } }, 'Close'))));
       document.body.append(overlay);
       drawSteps();
