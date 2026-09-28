@@ -35,6 +35,7 @@ The version is in `js/version.js` and shows in Settings > About and in the foote
 | Beginner (waits), Intermediate, Advanced; practice lock; loop with tempo ramp; metronome, count-in, backing tracks | `js/lesson.js`, `js/sound.js` | REQ-FN-2, 3, 5, 6 |
 | 294 levels in 14 units, 60 songs (traditional, public domain or original, origin on every card) | `js/curriculum.js`, `js/curriculum-extra.js`, `js/songs.js`, `js/songs-extra.js` | REQ-FN-1, 4, REQ-NF-6 |
 | Creator: write songs in ABC with fields, note-length buttons, a clickable fretboard or notes played on the guitar; live tab, notation, Listen and error checking; saved to this browser and listed under Songs > My songs with Play, Edit, Export and Delete; Import .abc files (several tunes per file) | `js/abc.js`, `js/custom.js`, `js/ui-creator.js`, `js/ui-help.js` | |
+| Songs folder: My songs kept as one .abc file per song in a folder the user picks (File System Access API, Chrome and Edge on a computer). Saving, renaming and deleting update the files; files added or edited in the folder come into My songs (the newer side wins); choosing the same folder after cleared browser data brings the songs back. The folder handle is kept in IndexedDB, and after a reload the browser may ask for access again. Download all my songs as one .abc file works in every browser | `js/folder.js`, Settings | |
 | Practice room: 72 named exercises in 7 categories (warm-ups such as 1-2-3-4 and the spider, the five pentatonic boxes, blues and major pentatonic, scales and modes, arpeggios and triads, 12-bar shuffles, famous progressions, one-minute changes, Travis picking, bends and vibrato, speed ladders), with search, Listen, note steps and scoring | `js/practice.js`, `js/ui-practice.js` | |
 | Note steps: play any lesson or song with 10%, 20% ... 100% of its notes (strongest beats first, each step adding to the last); the score is capped at the step, and a step is cleared at 80% | `js/steps.js`, `js/ui-lesson.js` | |
 | Listen: hear any lesson or song first with a synthesised electric guitar (pickup, amp, cabinet and room; clean or crunch), with the playhead moving on the highway, tab and notation | `js/preview.js` | |
@@ -63,7 +64,7 @@ E4 F#3 Bb3                          pitches, placed on the neck in the level's p
 node tests/run.js                        # detector accuracy, notes and chords over ringing strings, every level and practice exercise parses and fits its bars
 node tests/make-wav.js /tmp/guitar.wav   # synthesized test recording
 npm i --no-save playwright               # only needed for the browser test
-python3 -m http.server 8777 & node tests/browser.test.js && node tests/progress.test.js && node tests/profiles.test.js && node tests/preview.test.js && node tests/steps-ui.test.js && node tests/creator.test.js && node tests/practice-ui.test.js
+python3 -m http.server 8777 & node tests/browser.test.js && node tests/progress.test.js && node tests/profiles.test.js && node tests/preview.test.js && node tests/steps-ui.test.js && node tests/creator.test.js && node tests/practice-ui.test.js && node tests/folder-ui.test.js
 ```
 
 The detector tests use synthesized plucked strings, clean and overdriven:

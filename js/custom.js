@@ -10,7 +10,7 @@
   CS.get = (id) => CS.list().find((s) => s.id === id) || null;
   const write = (list) => { const ok = S.set(KEY, list); CS.emit('change', list); return ok; };
 
-  // song: {id?, abc}; title and details come from the ABC header
+  // song: {id?, abc, file?}; title and details come from the ABC header. `file` is the song's .abc file in the songs folder (js/folder.js).
   CS.save = function (song) {
     const p = GQ.abc.parse(song.abc);
     if (p.errors.length) throw new Error('Fix the errors before saving: ' + p.errors[0]);
@@ -22,11 +22,26 @@
       difficulty: difficultyOf(p), updated: now,
     };
     const i = list.findIndex((s) => s.id === entry.id);
-    if (i >= 0) { entry.created = list[i].created; list[i] = entry; } else { entry.created = now; list.push(entry); }
+    if (song.file) entry.file = song.file;
+    if (i >= 0) { entry.created = list[i].created; if (!entry.file && list[i].file) entry.file = list[i].file; list[i] = entry; } else { entry.created = now; list.push(entry); }
     if (!write(list)) throw new Error('This browser did not save the song (storage full or blocked).');
+    CS.emit('saved', entry);
     return entry;
   };
-  CS.remove = function (id) { write(CS.list().filter((s) => s.id !== id)); };
+  CS.remove = function (id) {
+    const list = CS.list(), gone = list.find((s) => s.id === id);
+    write(list.filter((s) => s.id !== id));
+    if (gone) CS.emit('removed', gone);
+  };
+  // link a song to its file in the songs folder (null to unlink), without counting as an edit
+  CS.setFile = function (id, file) {
+    const list = CS.list(), s = list.find((x) => x.id === id);
+    if (!s) return;
+    if (file) s.file = file; else delete s.file;
+    write(list);
+  };
+  // every song in one .abc file, numbered X:1, X:2 ...
+  CS.exportAll = () => CS.list().map((s, i) => { const t = s.abc.trim(); return /^X:/m.test(t) ? t.replace(/^X:.*$/m, 'X:' + (i + 1)) : 'X:' + (i + 1) + '\n' + t; }).join('\n\n') + '\n';
 
   // import every tune in an .abc file; returns {saved: [entries], failed: [{title, error}]}
   CS.importText = function (text) {

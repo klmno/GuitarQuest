@@ -2,9 +2,10 @@
  * also names the offline cache in sw.js, so installed copies pick up the new files. */
 (function (G) {
   'use strict';
-  G.GQ_VERSION = '1.8.0';
-  G.GQ_RELEASED = '2026-09-27';
+  G.GQ_VERSION = '1.9.0';
+  G.GQ_RELEASED = '2026-09-28';
   G.GQ_CHANGES = [
+    ['1.9.0', '2026-09-28', 'Songs folder: keep My songs as .abc files in a folder on your computer (Chrome and Edge), synced both ways, so they survive cleared browser data. Download all my songs in one .abc file.'],
     ['1.8.0', '2026-09-27', 'New Practice tab: 72 well-known exercises by name (pentatonic boxes, blues scale, the spider, 1-2-3-4, modes, arpeggios, 12-bar shuffle, Travis picking, bends, speed ladders), each with Listen, note steps and scoring.'],
     ['1.7.1', '2026-09-27', 'Creator lists only the first 10 problems, with the total count.'],
     ['1.7.0', '2026-09-27', 'Creator: write your own songs in ABC, hear and check them, and save them to My songs (with Edit, Export and Import .abc). New ABC help page.'],

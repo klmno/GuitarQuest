@@ -256,6 +256,7 @@
     function mark() { for (const b of grid.querySelectorAll('.listen')) { const on = GQ.preview.playing(CUR.songLevel(b.dataset.song, 'full')); b.textContent = on ? '■ Stop' : '♪ Listen'; b.classList.toggle('on', on); } }
     draw();
     const offs = ['start', 'stop', 'end'].map((e) => GQ.preview.on(e, mark));
+    offs.push(GQ.folder.on('synced', (r) => { if (r.imported || r.updated) draw(); }));
     return { destroy() { GQ.preview.stop(); offs.forEach((f) => f()); } };
   };
 

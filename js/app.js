@@ -7,6 +7,15 @@
   store.on('settings', (e) => { if (e.key === 'tuning' || e.key === 'capo') syncSetup(); });
   store.on('profile', syncSetup);
   GQ.ui.start();
+  // songs folder: after a reload the browser may want the user's OK again before the app writes to it
+  GQ.folder.init().then(() => {
+    if (GQ.folder.state !== 'ask') return;
+    for (const old of document.querySelectorAll('.toast')) old.remove();
+    const t = GQ.h('div.toast', { role: 'status' }, `Your songs folder "${GQ.folder.name()}" needs your OK before new songs are saved there. `,
+      GQ.h('button.btn.small.primary', { onclick: () => { t.remove(); GQ.folder.allow().then((r) => r && GQ.ui.toast(GQ.folder.summary(r), 5000)).catch((e) => GQ.ui.toast('Could not use the folder: ' + e.message, 6000)); } }, 'Allow'));
+    document.body.append(t);
+    setTimeout(() => t.remove(), 15000);
+  }).catch((e) => console.warn('Songs folder:', e));
   const fv = document.getElementById('foot-version'); if (fv) fv.textContent = 'v' + G.GQ_VERSION;
   try { const seen = GQ.storage.get('seenVersion', null); if (seen && seen !== G.GQ_VERSION) GQ.ui.toast('Updated to version ' + G.GQ_VERSION + '. See Settings > About for what changed.', 6000); GQ.storage.set('seenVersion', G.GQ_VERSION); } catch { /* ignore */ }
 

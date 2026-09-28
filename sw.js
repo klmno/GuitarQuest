@@ -10,6 +10,7 @@ const ASSETS = [
   'js/app.js',
   'js/abc.js',
   'js/custom.js',
+  'js/folder.js',
   'js/ui-creator.js',
   'js/ui-help.js',
   'js/ui-practice.js',

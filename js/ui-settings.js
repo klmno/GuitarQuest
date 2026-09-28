@@ -122,6 +122,47 @@
       h('p.small.muted', null, 'These settings belong to this profile. Each player has their own progress, history and settings; all data stays in this browser.'),
       h('div.row', null, h('button.btn', { onclick: () => UI.go('#/profiles') }, 'Switch, add or export profiles'))));
 
+    // --- songs folder (js/folder.js) ---
+    const FO = GQ.folder, folderCard = h('section.card#folder');
+    function drawFolder() {
+      folderCard.innerHTML = '';
+      const n = GQ.custom.list().length;
+      const act = (fn, done) => async (e) => {
+        e.target.disabled = true;
+        try { const r = await fn(); if (done) done(r); } catch (err) { UI.toast('Could not use the folder: ' + err.message, 6000); }
+        drawFolder();
+      };
+      const told = (r) => { if (r) UI.toast(FO.summary(r), 5000); };
+      folderCard.append(h('h2', null, 'Songs folder'),
+        h('p.small.muted', null, 'Keep every song from My songs in a folder on this computer, one .abc file each. Saving, renaming or deleting a song updates its file, and .abc files you put in the folder or edit there show up in My songs. If this browser’s data is ever lost, choose the same folder again and your songs come back.'));
+      if (FO.state === 'unsupported') {
+        folderCard.append(h('p.msg.warn', null, 'This browser cannot save to a folder: Chrome and Edge on a computer can. Here, use "Download all my songs" and keep the file somewhere safe.'));
+      } else if (FO.state === 'none') {
+        folderCard.append(h('div.row', null, h('button.btn.primary', { onclick: act(FO.choose, told) }, 'Choose a folder…')));
+      } else {
+        const badge = { ready: ['good', 'saving here'], ask: ['warn', 'waiting for your OK'], error: ['bad', 'not reachable'] }[FO.state] || ['', FO.state];
+        folderCard.append(h('div.row', null, h('span', null, '📁 ', h('strong', null, FO.name())), h('span.badge.' + badge[0], null, badge[1])));
+        if (FO.state === 'ask') folderCard.append(h('p.msg.warn', null, 'The browser needs your OK again before the app can write to this folder. Until then, songs are saved in the browser only.'));
+        if (FO.state === 'error') folderCard.append(h('p.msg.bad', null, FO.error));
+        const L = FO.last;
+        if (FO.state === 'ready' && L) {
+          folderCard.append(h('p.small.muted', null, `Last checked ${new Date(L.date).toLocaleString()}: ${L.songs} song${L.songs === 1 ? '' : 's'}. ${FO.summary(L).replace(/^Songs folder: /, '').replace(/^Songs folder is up to date\./, 'Nothing needed changing.')}`));
+          if (L.skipped.length) folderCard.append(h('ul.small.muted', null, ...L.skipped.slice(0, 10).map((t) => h('li', null, t))));
+        }
+        folderCard.append(h('div.row', null,
+          FO.state === 'ask' ? h('button.btn.primary', { onclick: act(FO.allow, told) }, 'Allow access') : null,
+          FO.state === 'ready' ? h('button.btn', { onclick: act(FO.sync, told) }, 'Sync now') : null,
+          h('button.btn', { onclick: act(FO.choose, told) }, FO.state === 'error' ? 'Choose the folder again…' : 'Choose another folder…'),
+          h('button.btn.ghost', { onclick: act(FO.forget, () => UI.toast('Stopped saving to the folder. Its files are still there.', 5000)) }, 'Stop using this folder')));
+      }
+      folderCard.append(h('div.row', { style: { marginTop: '.6rem' } },
+        h('button.btn.small', { disabled: !n, onclick: () => UI.download('my-songs.abc', GQ.custom.exportAll()) }, 'Download all my songs (.abc)'),
+        h('span.small.muted', null, n ? `${n} song${n === 1 ? '' : 's'} in one file; Songs > Import .abc reads it back.` : 'No songs of your own yet.')));
+    }
+    drawFolder();
+    const offFolder = [FO.on('state', drawFolder), FO.on('synced', drawFolder)];
+    sections.push(folderCard);
+
     // --- instrument ---
     sections.push(h('section.card', null, h('h2', null, 'Instrument'),
       h('div.grid2', { style: { marginTop: '.6rem' } },
@@ -190,6 +231,7 @@
 
     main.append(h('div.grid2', null, ...sections));
     if (args[0] === 'input') inputCard.scrollIntoView();
-    return { destroy() { offState(); offLearn(); } };
+    if (args[0] === 'folder') folderCard.scrollIntoView();
+    return { destroy() { offState(); offLearn(); offFolder.forEach((f) => f()); } };
   };
 })(typeof window !== 'undefined' ? window : globalThis);
