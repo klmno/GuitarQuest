@@ -7,7 +7,7 @@
   const DEFAULT_SETTINGS = {
     mode: 'beginner',                // beginner | intermediate | advanced
     tuning: 'standard', capo: 0, a4: 440,
-    leftHanded: false, displaySize: 1,
+    leftHanded: false, flipStrings: false, displaySize: 1,
     views: { fretboard: true, highway: true, tab: true, staff: false },
     metronome: true, metronomeVol: 0.6, backing: true, backingVol: 0.5, countIn: true,
     monitor: false, monitorVol: 0.7, ampTone: 'clean', previewTone: 'clean',

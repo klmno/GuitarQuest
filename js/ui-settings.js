@@ -169,7 +169,8 @@
         h('label.field', null, 'Tuning', h('select', { onchange: set('tuning') }, ...Object.entries(T.TUNINGS).map(([k, v]) => h('option', { value: k, selected: s.tuning === k }, v.name)))),
         h('label.field', null, 'Capo', h('select', { onchange: set('capo') }, ...Array.from({ length: 10 }, (_, i) => h('option', { value: i, selected: s.capo === i }, i ? 'Fret ' + i : 'No capo')))),
         h('label.field', null, 'Reference pitch A4 (Hz)', h('input', { type: 'number', min: 415, max: 466, step: 0.5, value: s.a4, onchange: set('a4') })),
-        h('label.inline', null, h('input', { type: 'checkbox', checked: s.leftHanded, onchange: set('leftHanded') }), 'Left-handed (mirror the neck and chord boxes)')),
+        h('label.inline', null, h('input', { type: 'checkbox', checked: s.leftHanded, onchange: set('leftHanded') }), 'Left-handed (mirror the neck and chord boxes)'),
+        h('label.inline', null, h('input', { type: 'checkbox', checked: !!s.flipStrings, onchange: set('flipStrings') }), 'Flip the fretboard and tab (low E string on top, as you see the neck when you look down)')),
       h('p.small.muted', null, 'Lessons keep the same shapes; the pitches the app expects follow your tuning and capo.')));
 
     // --- display & practice ---

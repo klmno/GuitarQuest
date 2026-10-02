@@ -218,7 +218,7 @@
     // ----- clickable fretboard -----
     const fb = h('canvas.creator-fb', { title: 'Click a string and fret to add that note' });
     let hover = null;
-    const fbOpts = () => ({ lo: 0, hi: 15, lefty: store.settings().leftHanded, size: 1, names: T.stringNames() });
+    const fbOpts = () => ({ lo: 0, hi: 15, lefty: store.settings().leftHanded, flip: store.settings().flipStrings, size: 1, names: T.stringNames() });
     fb.addEventListener('mousemove', (e) => { const r = fb.getBoundingClientRect(); hover = R.fretboardHit(fb, fbOpts(), e.clientX - r.left, e.clientY - r.top); });
     fb.addEventListener('mouseleave', () => (hover = null));
     fb.addEventListener('click', (e) => {
@@ -296,7 +296,7 @@
       const s = store.settings();
       const pv = GQ.preview.playing(draftLevel()) ? GQ.preview.pos() : null;
       if (pv != null) { pos = Math.max(0, pv); scrub.value = pos; }
-      const opts = { events: parsed.events, pos: pv != null ? pv : pos, size: 1, beatsPerBar: parsed.beatsPerBar, totalBeats: parsed.totalBeats, setup: T.setup };
+      const opts = { events: parsed.events, pos: pv != null ? pv : pos, size: 1, beatsPerBar: parsed.beatsPerBar, totalBeats: parsed.totalBeats, setup: T.setup, flip: s.flipStrings };
       R.tab(tab, opts); R.staff(staff, opts);
       const markers = hover ? [{ string: hover.string, fret: hover.fret, finger: 0, label: T.pcName(T.midiAt(hover.string, hover.fret)), alpha: 0.9 }] : [];
       // show the last written notes on the neck

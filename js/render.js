@@ -24,7 +24,7 @@
   }
 
   // ================= Fretboard =================
-  // opts: {lo, hi, markers:[{string,fret,finger,state,alpha,label}], heard:{string,fret,ok}, lefty, lock:{lo,hi}, names, barre}
+  // opts: {lo, hi, markers:[{string,fret,finger,state,alpha,label}], heard:{string,fret,ok}, lefty, flip (low E on top), lock:{lo,hi}, names, barre}
   R.fretboard = function (cv, opts) {
     const { g, w, h } = GQ.fitCanvas(cv);
     const c = COL(), size = opts.size || 1;
@@ -38,7 +38,7 @@
     const X = (x) => (opts.lefty ? w - x : x);
     const fretX = (f) => X(fx0(f));
     const noteX = (f) => (f === 0 ? X(lo === 0 ? nutX - 14 * size : fx0(lo) - 10) : X((fx0(f - 1) + fx0(f)) / 2));
-    const stringY = (s) => padT + ((s - 1) / 5) * H;
+    const stringY = (s) => padT + ((opts.flip ? 6 - s : s - 1) / 5) * H;
 
     // board
     g.fillStyle = c.wood;
@@ -118,7 +118,7 @@
     const span = (f) => 1 - Math.pow(2, -f / 12);
     const fx0 = (f) => nutX + W * (span(f) - span(lo)) / (span(hi) - span(lo));
     const xx = opts.lefty ? w - x : x;
-    const string = GQ.clamp(Math.round((y - padT) / (H / 5)) + 1, 1, 6);
+    const row = GQ.clamp(Math.round((y - padT) / (H / 5)) + 1, 1, 6), string = opts.flip ? 7 - row : row;
     if (lo === 0 && xx < nutX + 4) return { string, fret: 0 };
     for (let f = Math.max(1, lo + 1); f <= hi; f++) if (xx <= fx0(f)) return { string, fret: f };
     return null;
@@ -199,11 +199,11 @@
     const top = 24 * size, gap = Math.min(18 * size, (h - top - 34 * size) / 5);
     const ppb = opts.pxPerBeat || 70 * size, headX = w * 0.22;
     const X = (b) => headX + (b - opts.pos) * ppb;
-    const Ys = (s) => top + (s - 1) * gap;
+    const Ys = (s) => top + (opts.flip ? 6 - s : s - 1) * gap, bottom = top + 5 * gap; // opts.flip: low E on top
     g.strokeStyle = c.line; g.lineWidth = 1;
     for (let s = 1; s <= 6; s++) { g.beginPath(); g.moveTo(0, Ys(s)); g.lineTo(w, Ys(s)); g.stroke(); }
     g.fillStyle = c.muted; g.font = `700 ${11 * size}px ui-monospace, monospace`; g.textAlign = 'left';
-    ['T', 'A', 'B'].forEach((ch, i) => g.fillText(ch, 4, Ys(2) + i * gap * 1.4));
+    ['T', 'A', 'B'].forEach((ch, i) => g.fillText(ch, 4, top + gap + i * gap * 1.4));
     // bars
     const bpb = opts.beatsPerBar || 4;
     for (let b = Math.floor((opts.pos - headX / ppb) / bpb) * bpb; X(b) < w; b += bpb) {
@@ -231,9 +231,9 @@
       if (t.into) { const sy = e.notes[0].string; const sym = { h: 'h', p: 'p', su: '/', sd: '\\' }[t.into]; g.fillText(sym, x + ppb * e.dur / 2, Ys(sy) - 10 * size); }
       if (t.pm) g.fillText('PM', x, top - 12);
       if (e.chordName && !e.repeat) { g.fillStyle = c.accent; g.font = `700 ${12 * size}px system-ui`; g.fillText(e.chordName, x, top - 12); }
-      if (e.strum && e.kind !== 'note') { g.fillStyle = c.muted; g.fillText(e.strum === 'u' ? '↑' : e.strum === 'd' ? '↓' : '', x, Ys(6) + 30 * size); }
+      if (e.strum && e.kind !== 'note') { g.fillStyle = c.muted; g.fillText(e.strum === 'u' ? '↑' : e.strum === 'd' ? '↓' : '', x, bottom + 30 * size); }
       // rhythm stems
-      const sy = Ys(6) + 10 * size, len = 14 * size;
+      const sy = bottom + 10 * size, len = 14 * size;
       g.strokeStyle = c.muted; g.lineWidth = 1.2;
       if (e.dur < 4) { g.beginPath(); g.moveTo(x, sy); g.lineTo(x, sy + (e.dur >= 2 ? len * 0.6 : len)); g.stroke(); }
       if (e.dur <= 0.75) { g.beginPath(); g.moveTo(x, sy + len); g.lineTo(x + 7, sy + len - 5); g.stroke(); }

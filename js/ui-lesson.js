@@ -222,13 +222,13 @@
     const fw = R.fretWindow(N.parseLevel(level, { pos: lockPos != null ? lockPos : undefined }).events, lockPos, lockPos != null ? lockPos + 4 : null);
     UI.draw = function (now) {
       if (!lesson) return;
-      const st = store.settings(), size = st.displaySize || 1, lefty = st.leftHanded;
+      const st = store.settings(), size = st.displaySize || 1, lefty = st.leftHanded, flip = st.flipStrings;
       const pv = GQ.preview.playing(level) ? GQ.preview.pos() : null;
       const pos = pv != null ? pv : lesson.state === 'ready' ? -0.5 : lesson.displayPos();
       const events = lesson.events;
       const setup = lesson.setup, names = T.stringNames(setup);
       if (views.highway) R.highway(hw, { events, pos, ahead: 4, results: lesson.results, lefty, size, beatsPerBar: lesson.bpb, names });
-      if (views.tab) R.tab(tab, { events, pos, results: lesson.results, size, beatsPerBar: lesson.bpb, totalBeats: lesson.totalBeats, loop: lesson.loop });
+      if (views.tab) R.tab(tab, { events, pos, results: lesson.results, size, beatsPerBar: lesson.bpb, totalBeats: lesson.totalBeats, loop: lesson.loop, flip });
       if (views.staff) R.staff(staff, { events, pos, results: lesson.results, size, beatsPerBar: lesson.bpb, totalBeats: lesson.totalBeats, setup });
 
       // current and upcoming targets
@@ -268,7 +268,7 @@
             if (cand.length) heard = Object.assign(cand[0], { ok: false });
           }
         }
-        R.fretboard(fb, { lo: fw.lo, hi: fw.hi, markers, heard, lefty, size, names, barre: cur && cur.chord && cur.chord.barre,
+        R.fretboard(fb, { lo: fw.lo, hi: fw.hi, markers, heard, lefty, flip, size, names, barre: cur && cur.chord && cur.chord.barre,
           lock: lockPos != null ? { lo: Math.max(1, lockPos), hi: lockPos + 4 } : null });
       }
 
