@@ -2,9 +2,10 @@
  * also names the offline cache in sw.js, so installed copies pick up the new files. */
 (function (G) {
   'use strict';
-  G.GQ_VERSION = '1.11.0';
+  G.GQ_VERSION = '1.12.0';
   G.GQ_RELEASED = '2026-10-01';
   G.GQ_CHANGES = [
+    ['1.12.0', '2026-10-01', 'Progress while you play: next to the note steps, a bar and a count of the notes played right so far (and how many were missed).'],
     ['1.11.0', '2026-10-01', 'My songs can be written as guitar tab: paste a plain-text tab into the Creator (or import a .tab file) and play it with its exact strings, frets, hammer-ons, slides, bends and palm mutes. Saved and exported as .tab.'],
     ['1.10.0', '2026-10-01', 'Settings > Instrument: flip the fretboard and tab so the low E string is on top, as you see the neck when you look down.'],
     ['1.9.0', '2026-09-28', 'Songs folder: keep My songs as .abc files in a folder on your computer (Chrome and Edge), synced both ways, so they survive cleared browser data. Download all my songs in one .abc file.'],

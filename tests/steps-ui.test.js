@@ -24,16 +24,21 @@ const URL = process.argv[2] || 'http://localhost:8777/index.html';
       const parsed = GQ.notation.parse(lv.text, { pos: lv.pos });
       const step = GQ.steps.startStep('u2-4');
       const keep = GQ.steps.keep(parsed.events, 4, step);
+      const mid = [];
       for (const e of parsed.events.filter((x) => keep.has(x.i))) {
         A.emit('note', { freq: T.midiToFreq(T.midiAt(e.notes[0].string, e.notes[0].fret)), conf: 0.97, onsetTime: A.ctx.currentTime });
         await sleep(25);
+        mid.push(document.querySelector('.songprog').textContent);
       }
+      window.__mid = mid;
     });
     await p.waitForSelector('.overlay');
   };
   await playAll();
   const big = await p.textContent('.result .big');
   check(big.trim() === '20%', 'perfect run at 20% scores 20%: ' + big);
+  const mid = await p.evaluate(() => window.__mid);
+  check(mid[2] === '3 / 6 right' && mid[5] === '6 / 6 right', 'the bar after the steps counts the notes played right: ' + mid.join(', '));
   check(await p.isVisible('text=Next step: 30% of the notes'), 'offers the next step');
   await p.click('text=Next step: 30% of the notes');
   check(/Playing 10 notes/.test(await p.textContent('.stepbar .small')), 'moved to 30%');

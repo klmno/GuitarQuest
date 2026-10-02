@@ -203,6 +203,10 @@ kbd { font: .8rem var(--mono); border: 1px solid var(--line); border-bottom-widt
 /* ---------- note steps ---------- */
 .stepbar { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin: -.2rem 0 .8rem; }
 .steplabel { font-weight: 700; font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.songprog { display: flex; align-items: center; gap: .5rem; }
+.progbar { display: flex; width: 9rem; height: .5rem; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); overflow: hidden; }
+.progtext { font-size: .85rem; font-variant-numeric: tabular-nums; }
+.progbar .r { background: var(--good); } .progbar .w { background: var(--bad); }
 .seg.steps button { padding: .35rem .55rem; min-height: 2.1rem; font-size: .85rem; }
 .seg.steps button.cleared:not(.on) { color: var(--good); }
 .seg.steps button.cleared::after { content: ' ✓'; }

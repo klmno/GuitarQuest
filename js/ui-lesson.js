@@ -49,6 +49,18 @@
     let step = GQ.steps.startStep(level.id);
     const stepBar = h('div.stepbar');
     const stepInfo = h('span.small.muted');
+    // how far into the song: notes played right so far, of the notes in this step
+    const progBar = h('div.progbar'), progText = h('span.progtext');
+    const progEl = h('div.songprog', { title: 'Notes played right so far, of the notes in this run' }, progBar, progText);
+    function drawProgress() {
+      if (!lesson) return;
+      const total = lesson.targets.length;
+      let right = 0, wrong = 0;
+      for (const r of lesson.results.values()) { if (r.state === 'hit') right++; else if (r.state === 'wrong' || r.state === 'miss') wrong++; }
+      progBar.innerHTML = '';
+      progBar.append(h('span.r', { style: { width: (total ? right / total * 100 : 0) + '%' } }), h('span.w', { style: { width: (total ? wrong / total * 100 : 0) + '%' } }));
+      progText.textContent = `${right} / ${total} right` + (wrong ? ` · ${wrong} missed` : '');
+    }
     function drawSteps() {
       const pr = GQ.steps.progress(level.id);
       stepBar.innerHTML = '';
@@ -59,7 +71,8 @@
         seg.append(h('button', { class: (p === step ? 'on ' : '') + (best >= GQ.steps.CLEAR ? 'cleared' : ''), title: best != null ? `Best ${best}% of these notes` : `${p}% of the notes`,
           onclick: () => setStep(p) }, p + '%'));
       }
-      stepBar.append(seg, stepInfo);
+      stepBar.append(seg, progEl, stepInfo);
+      drawProgress();
       stepInfo.textContent = step < 100 ? `Playing ${lesson ? lesson.targets.length : ''} notes of ${lesson ? lesson.events.filter((e) => e.kind !== 'rest').length : ''}; the score is capped at ${step}%.` : 'All the notes.';
     }
     function setStep(p) {
@@ -114,10 +127,12 @@
       clearTimeout(autoTimer);
       lesson = new GQ.Lesson(level, { mode, lockPos, step });
       if (level.ladder) { lesson.setTempo(level.ladder.from / level.bpm); lesson.setLoop(0, lesson.totalBeats, 0.05); loopInfo.textContent = 'Metronome ladder: tempo rises after each clean pass.'; }
-      lesson.on('state', updateButtons);
+      lesson.on('state', () => { updateButtons(); drawProgress(); });
+      drawProgress();
       lesson.on('tempo', updateButtons);
       lesson.on('result', ({ res }) => {
         lastRes = res;
+        drawProgress();
         if (res.state === 'wrong' && res.hint) say(res.hint, 'bad');
         else if (res.state === 'wrong') say('Heard ' + (res.heard || 'something else'), 'bad');
         else if (res.state === 'unclear') say("I didn't hear that clearly. Not counted.", 'warn');
