@@ -126,7 +126,7 @@
     const FO = GQ.folder, folderCard = h('section.card#folder');
     function drawFolder() {
       folderCard.innerHTML = '';
-      const n = GQ.custom.list().length;
+      const mine = GQ.custom.list(), tabs = mine.filter((x) => GQ.custom.formatOf(x) === 'tab'), n = mine.length - tabs.length;
       const act = (fn, done) => async (e) => {
         e.target.disabled = true;
         try { const r = await fn(); if (done) done(r); } catch (err) { UI.toast('Could not use the folder: ' + err.message, 6000); }
@@ -136,7 +136,7 @@
       folderCard.append(h('h2', null, 'Songs folder'),
         h('p.small.muted', null, 'Keep every song from My songs in a folder on this computer, one .abc file each. Saving, renaming or deleting a song updates its file, and .abc files you put in the folder or edit there show up in My songs. If this browser’s data is ever lost, choose the same folder again and your songs come back.'));
       if (FO.state === 'unsupported') {
-        folderCard.append(h('p.msg.warn', null, 'This browser cannot save to a folder: Chrome and Edge on a computer can. Here, use "Download all my songs" and keep the file somewhere safe.'));
+        folderCard.append(h('p.msg.warn', null, 'This browser cannot save to a folder: Chrome and Edge on a computer can. Here, use the download buttons below and keep the files somewhere safe.'));
       } else if (FO.state === 'none') {
         folderCard.append(h('div.row', null, h('button.btn.primary', { onclick: act(FO.choose, told) }, 'Choose a folder…')));
       } else {
@@ -157,7 +157,10 @@
       }
       folderCard.append(h('div.row', { style: { marginTop: '.6rem' } },
         h('button.btn.small', { disabled: !n, onclick: () => UI.download('my-songs.abc', GQ.custom.exportAll()) }, 'Download all my songs (.abc)'),
-        h('span.small.muted', null, n ? `${n} song${n === 1 ? '' : 's'} in one file; Songs > Import .abc reads it back.` : 'No songs of your own yet.')));
+        h('span.small.muted', null, n ? `${n} ABC song${n === 1 ? '' : 's'} in one file; Songs > Import reads it back.` : mine.length ? 'No ABC songs.' : 'No songs of your own yet.')));
+      if (tabs.length) folderCard.append(h('div.row', null,
+        h('button.btn.small', { onclick: () => tabs.forEach((t, i) => setTimeout(() => UI.download(UI.fileName(t.title, '.tab'), t.tab), i * 300)) }, 'Download my tab songs (.tab)'),
+        h('span.small.muted', null, `${tabs.length} tab song${tabs.length === 1 ? '' : 's'}, one file each. The browser may ask once to allow several downloads.`)));
     }
     drawFolder();
     const offFolder = [FO.on('state', drawFolder), FO.on('synced', drawFolder)];

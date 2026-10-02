@@ -72,15 +72,32 @@
     return lines.join('\n');
   }
 
+  // set, add or remove a header line of a tab song ("Title: ...", "By:", "Tempo:", "Time:")
+  function setTabHeader(text, key, value) {
+    const lines = text.split('\n');
+    const re = new RegExp('^\\s*(' + ({ Title: 'title', By: 'by|artist|composer', Tempo: 'tempo|bpm', Time: 'time|meter' }[key]) + ')\\s*:', 'i');
+    const firstTab = lines.findIndex((l) => GQ.tab.looks(l + '\n' + l + '\n' + l + '\n' + l));
+    const idx = lines.findIndex((l, i) => (firstTab < 0 || i < firstTab) && re.test(l));
+    if (value === null || value === '') { if (idx >= 0 && key !== 'Title') lines.splice(idx, 1); else if (idx >= 0) lines[idx] = key + ': '; }
+    else if (idx >= 0) lines[idx] = key + ': ' + value;
+    else lines.splice(key === 'Title' ? 0 : Math.max(0, lines.findIndex((l) => /^\s*title\s*:/i.test(l)) + 1), 0, key + ': ' + value);
+    return lines.join('\n');
+  }
+  const looksLikeTab = (t) => GQ.tab.looks(t) && !/(^|\n)K:/.test(t);
+
   // ---------- the screen ----------
   UI.screens.creator = function (main, args) {
     const editId = args[0] && args[0] !== 'new' ? args[0] : null;
     let song = editId ? GQ.custom.get(editId) : null;
     if (editId && !song) { main.append(h('div.card', null, 'That song is not in this browser any more. ', h('a', { href: '#/creator' }, 'Start a new one'))); return; }
     const draft = GQ.storage.get('creatorDraft', null);
-    let text = song ? song.abc : draft && !draft.id ? draft.abc : TEMPLATE;
-    let savedText = song ? song.abc : null;
-    let parsed = ABC.parse(text);
+    // each song is written either in ABC or as guitar tab
+    let fmt = song ? GQ.custom.formatOf(song) : draft && !draft.id && draft.format === 'tab' ? 'tab' : 'abc';
+    let text = song ? GQ.custom.textOf(song) : draft && !draft.id ? draft.abc : TEMPLATE;
+    let savedText = song ? GQ.custom.textOf(song) : null;
+    const templateOf = (f) => (f === 'tab' ? GQ.tab.TEMPLATE : TEMPLATE);
+    const parse = (t) => GQ.custom.parse(t, fmt);
+    let parsed = parse(text);
     let dur = 1, dotted = false, triplet = false, autoBars = true, record = false, pos = 0, lastTyped = 0;
 
     // ----- header fields -----
@@ -95,7 +112,9 @@
     const fOct = h('select', null, h('option', { value: '-1' }, 'Guitar (sounds an octave lower)'), h('option', { value: '0' }, 'As written'), h('option', { value: '-2' }, 'Two octaves lower'));
     const fPlay = h('select', null, h('option', { value: 'melody' }, 'Melody (notes)'), h('option', { value: 'chords' }, 'Strum the chord symbols'));
     const field = (label, el) => h('label.field', null, label, el);
+    const TAB_KEYS = { 'T:': 'Title', 'C:': 'By', 'M:': 'Time', 'Q:': 'Tempo' };
     const bindHeader = (el, fieldName, map) => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
+      if (fmt === 'tab') { if (TAB_KEYS[fieldName]) setText(setTabHeader(ta.value, TAB_KEYS[fieldName], el.value), true); return; }
       const v = map ? map(el.value) : el.value;
       setText(setHeader(ta.value, fieldName, v), true);
     });
@@ -114,19 +133,21 @@
     function setText(t, replaceEditor) {
       text = t;
       if (replaceEditor) { const at = ta.selectionStart; ta.value = t; ta.selectionStart = ta.selectionEnd = Math.min(at, t.length); }
-      parsed = ABC.parse(text);
-      GQ.storage.set('creatorDraft', { id: song ? song.id : null, abc: text, at: Date.now() });
+      parsed = parse(text);
+      GQ.storage.set('creatorDraft', { id: song ? song.id : null, abc: text, format: fmt, at: Date.now() });
       refresh();
     }
     function refresh() {
       const m = parsed.meta;
       const setIfIdle = (el, v) => { if (document.activeElement !== el) el.value = v; };
       setIfIdle(fTitle, m.title); setIfIdle(fBy, m.composer);
-      setIfIdle(fMeter, m.meterText); setIfIdle(fTempo, /(^|\n)Q:/.test(text) ? m.bpm : '');
-      if (![...fKey.options].some((o) => o.value === m.keyName)) fKey.append(h('option', { value: m.keyName }, m.keyName));
-      setIfIdle(fKey, m.keyName);
-      const u = m.unit === 0.25 ? '1/4' : m.unit === 1 / 16 ? '1/16' : '1/8'; setIfIdle(fUnit, u);
-      setIfIdle(fPos, String(m.position)); setIfIdle(fOct, String(m.octave)); setIfIdle(fPlay, m.play);
+      setIfIdle(fMeter, m.meterText); setIfIdle(fTempo, (fmt === 'tab' ? /(^|\n)\s*(tempo|bpm)\s*:/i : /(^|\n)Q:/).test(text) ? m.bpm : '');
+      if (fmt === 'abc') {
+        if (![...fKey.options].some((o) => o.value === m.keyName)) fKey.append(h('option', { value: m.keyName }, m.keyName));
+        setIfIdle(fKey, m.keyName);
+        const u = m.unit === 0.25 ? '1/4' : m.unit === 1 / 16 ? '1/16' : '1/8'; setIfIdle(fUnit, u);
+        setIfIdle(fPos, String(m.position)); setIfIdle(fOct, String(m.octave)); setIfIdle(fPlay, m.play);
+      }
       problemsEl.innerHTML = '';
       const noNotes = parsed.errors.length === 1 && /no notes/.test(parsed.errors[0]);
       // errors first, then warnings; only the first MAX_SHOWN, with a count of the rest
@@ -138,7 +159,7 @@
         problemsEl.append(h('li.more', null, `${MAX_SHOWN} out of ${all.length} ${what} shown. Fix these first: many of the others often go away with them.`));
       }
       if (!parsed.problems.length && !parsed.warnings.length) problemsEl.append(h('li.ok', null, 'No problems found.'));
-      if (noNotes) { problemsEl.innerHTML = ''; problemsEl.append(h('li.info', null, 'Add notes: click the fretboard, play them on your guitar, or type them after the K: line.')); }
+      if (noNotes) { problemsEl.innerHTML = ''; problemsEl.append(h('li.info', null, fmt === 'tab' ? 'Add notes: write fret numbers on the string lines, or paste a tab.' : 'Add notes: click the fretboard, play them on your guitar, or type them after the K: line.')); }
       const notes = parsed.events.filter((e) => e.kind !== 'rest');
       const secs = parsed.totalBeats * 60 / (m.bpm || 100);
       const frets = notes.flatMap((e) => e.notes.map((n) => n.fret));
@@ -202,7 +223,7 @@
       record = !record; recBtn.classList.toggle('on', record); recBtn.textContent = record ? '● Recording: play notes' : '● Record from guitar';
     } }, '● Record from guitar');
     const offNote = A.on('note', (m) => {
-      if (!record || m.legato || (m.conf || 0) < 0.85) return;
+      if (!record || fmt !== 'abc' || m.legato || (m.conf || 0) < 0.85) return;
       insertNote(Math.round(T.freqToMidi(m.freq, store.settings().a4)));
     });
     const tools = h('div.toolbar.creator-tools', null,
@@ -235,24 +256,26 @@
       if (parsed.problems.length) { UI.toast('Fix the problems first.'); return; }
       GQ.preview.play(draftLevel(), { from: Math.floor(pos / parsed.beatsPerBar) * parsed.beatsPerBar });
     } }, '♪ Listen');
-    const draftLevel = () => ({ id: 'creator-draft', title: parsed.meta.title, abc: text, bpm: parsed.meta.bpm, backing: parsed.meta.chords.length ? 'folk' : 'none' });
+    const draftLevel = () => ({ id: 'creator-draft', title: parsed.meta.title, [fmt]: text, bpm: parsed.meta.bpm, backing: parsed.meta.chords.length ? 'folk' : 'none' });
     const pvOff = ['start', 'stop', 'end'].map((ev) => GQ.preview.on(ev, () => { const on = GQ.preview.playing(draftLevel()); listenBtn.textContent = on ? '■ Stop' : '♪ Listen'; listenBtn.classList.toggle('on', on); }));
 
     // ----- actions -----
     const saveBtn = h('button.btn.primary', { onclick: () => save() }, 'Save song');
     const practiceBtn = h('button.btn', { onclick: () => { const s = save(); if (s) UI.go('#/lesson/song-custom-' + s.id + '-full'); } }, 'Save and practise');
-    const fileIn = h('input', { type: 'file', accept: '.abc,text/plain', hidden: true, onchange: async (e) => {
+    const fileIn = h('input', { type: 'file', accept: '.abc,.tab,.txt,text/plain', hidden: true, onchange: async (e) => {
       const f = e.target.files[0]; if (!f) return;
-      const tunes = ABC.splitTunes(await f.text());
+      const raw = await f.text();
       e.target.value = '';
+      if (looksLikeTab(raw)) { setFormat('tab', /(^|\n)\s*title\s*:/i.test(raw) ? raw : 'Title: ' + f.name.replace(/\.[^.]*$/, '') + '\n' + raw); return; }
+      const tunes = ABC.splitTunes(raw);
       if (!tunes.length) { UI.toast('No tune found in that file: each tune needs an X: line and a K: line.'); return; }
       if (tunes.length > 1) UI.toast(`The file has ${tunes.length} tunes: the first is open here. Use Songs > Import .abc to add them all.`, 6000);
-      setText(tunes[0], true);
+      setFormat('abc', tunes[0]);
     } });
     function save(asCopy) {
       if (parsed.problems.length) { UI.toast('Fix the problems first.'); return null; }
       try {
-        const entry = GQ.custom.save({ id: song && !asCopy ? song.id : null, abc: text });
+        const entry = GQ.custom.save({ id: song && !asCopy ? song.id : null, format: fmt, text });
         song = entry; savedText = text;
         GQ.storage.set('creatorDraft', null);
         if (location.hash !== '#/creator/' + entry.id) history.replaceState(null, '', '#/creator/' + entry.id);
@@ -266,12 +289,52 @@
       actions.innerHTML = '';
       actions.append(...[saveBtn, practiceBtn,
         song ? h('button.btn.ghost', { onclick: () => save(true), title: 'Keep the original and save this as a new song' }, 'Save as a copy') : null,
-        h('button.btn.ghost', { onclick: () => UI.download(UI.fileName(parsed.meta.title, '.abc'), text) }, 'Download .abc'),
-        h('button.btn.ghost', { onclick: () => fileIn.click() }, 'Open .abc file'), fileIn,
-        h('button.btn.ghost', { onclick: () => { if (text !== savedText && text !== TEMPLATE && !confirm('Start a new song? Unsaved changes here will be lost.')) return; GQ.storage.set('creatorDraft', null); song = null; savedText = null; history.replaceState(null, '', '#/creator'); setText(TEMPLATE, true); drawActions(); } }, 'New'),
+        h('button.btn.ghost', { onclick: () => UI.download(UI.fileName(parsed.meta.title, GQ.custom.ext(fmt)), text) }, 'Download ' + GQ.custom.ext(fmt)),
+        h('button.btn.ghost', { onclick: () => fileIn.click(), title: 'Open an .abc or tab (.tab, .txt) file' }, 'Open file'), fileIn,
+        h('button.btn.ghost', { onclick: () => { if (text !== savedText && text !== templateOf(fmt) && !confirm('Start a new song? Unsaved changes here will be lost.')) return; GQ.storage.set('creatorDraft', null); song = null; savedText = null; history.replaceState(null, '', '#/creator'); setText(templateOf(fmt), true); drawActions(); } }, 'New'),
         saveState].filter(Boolean));
     }
     drawActions();
+
+    // ----- ABC or tab -----
+    const tabHint = h('div.tab-hint', null,
+      h('p.small.muted', null, 'Write or paste guitar tab: six lines, high e on top, bar lines with |. Paste a whole tab from a website and it is read as it is. ',
+        'Marks: 5h7 hammer-on, 7p5 pull-off, 5/7 slide, 7b9 bend, 7~ vibrato, x dead note, x3 after a block repeats it, pm--- under the block palm-mutes. ',
+        h('a', { href: '#/help', onclick: (e) => { e.preventDefault(); UI.go('#/help'); setTimeout(() => { const el = document.getElementById('h-tab'); if (el) el.scrollIntoView(); }, 50); } }, 'More about tab'), '.'),
+      h('p.small.muted', null, 'Tab has no note lengths, so the rhythm is read from the spacing: space the notes the way they are played, and check it with Listen.'));
+    const fmtSeg = h('div.seg', { role: 'group', 'aria-label': 'Written as' }, ...[['abc', 'ABC'], ['tab', 'Tab']].map(([f, t]) => h('button', { 'data-f': f, onclick: () => switchFormat(f) }, t)));
+    const abcOnly = [field('Key', fKey), field('Default note length', fUnit), field('Neck position', fPos), field('Octave', fOct), field('Play', fPlay), tools, fb,
+      h('p.small.muted', null, 'Pick a length, then click a string and fret. The note is written into the song below at the cursor. Type directly in the text too: it is checked as you go.')];
+    function setFormat(f, newText) {
+      fmt = f;
+      for (const b of fmtSeg.children) b.classList.toggle('on', b.dataset.f === f);
+      for (const el of abcOnly) el.style.display = f === 'abc' ? '' : 'none';
+      tabHint.style.display = f === 'tab' ? '' : 'none';
+      ta.setAttribute('aria-label', f === 'tab' ? 'Guitar tab' : 'ABC notation');
+      if (f !== 'abc' && record) recBtn.click();
+      setText(newText != null ? newText : ta.value, newText != null);
+      drawActions();
+    }
+    function switchFormat(f) {
+      if (f === fmt) return;
+      const blank = !text.trim() || text === templateOf(fmt) || !parsed.events.some((e) => e.kind !== 'rest');
+      if (looksLikeTab(text) === (f === 'tab')) setFormat(f);   // the text is already written that way
+      else if (blank || confirm(`Start this song again as ${f === 'tab' ? 'tab' : 'ABC'}? Nothing is converted: the text here is replaced.`)) setFormat(f, templateOf(f));
+    }
+    // pasting tab into a new ABC song turns it into a tab song
+    ta.addEventListener('paste', (e) => {
+      const t = (e.clipboardData || G.clipboardData).getData('text');
+      if (fmt !== 'abc' || !looksLikeTab(t)) return;
+      if (!song && !parsed.events.some((x) => x.kind !== 'rest')) {
+        e.preventDefault();
+        const m = parsed.meta, title = m.title && m.title !== 'My new song' ? m.title : 'My new tab';
+        // add only the header lines the tab doesn't have
+        const has = (re) => new RegExp('(^|\\n)\\s*(' + re + ')\\s*:', 'i').test(t);
+        const head = [has('title') ? '' : 'Title: ' + title, has('tempo|bpm') ? '' : 'Tempo: ' + (m.bpm || 90), has('time|meter') ? '' : 'Time: ' + m.meterText].filter(Boolean);
+        setFormat('tab', head.length ? head.join('\n') + '\n\n' + t.replace(/^\n+/, '') : t);
+        UI.toast('That is guitar tab, so this song is now written as tab.', 5000);
+      } else UI.toast('That looks like guitar tab, but this song is written in ABC. Press New, choose Tab, and paste it there.', 7000);
+    });
 
     main.append(
       h('div.hero', null,
@@ -281,11 +344,10 @@
         h('div.row', null, h('a.btn.ghost', { href: '#/songs/mine' }, 'My songs'), h('a.btn.ghost', { href: '#/help' }, 'ABC help'))),
       h('div.creator', null,
         h('section.card.song-fields', null, h('h3', { style: { marginTop: 0 } }, 'Song'),
-          h('div.fields', null, field('Title', fTitle), field('By', fBy), field('Meter', fMeter), field('Tempo (quarter notes per minute)', fTempo),
-            field('Key', fKey), field('Default note length', fUnit), field('Neck position', fPos), field('Octave', fOct), field('Play', fPlay))),
+          h('label.field', null, 'Written as', fmtSeg),
+          h('div.fields', null, field('Title', fTitle), field('By', fBy), field('Meter', fMeter), field('Tempo (quarter notes per minute)', fTempo), ...abcOnly.slice(0, 5))),
         h('section.card.write', null, h('h3', { style: { marginTop: 0 } }, 'Write'),
-          tools, fb,
-          h('p.small.muted', null, 'Pick a length, then click a string and fret. The note is written into the song below at the cursor. Type directly in the text too: it is checked as you go.'),
+          ...abcOnly.slice(5), tabHint,
           ta, problemsEl),
         h('section.card.preview-card', null,
           h('div.row.spread', null, h('h3', { style: { margin: 0 } }, 'Preview'), h('div.row', null, listenBtn)),
@@ -304,7 +366,7 @@
       if (last) for (const n of last.notes) markers.push({ string: n.string, fret: n.fret, finger: n.finger, alpha: 0.45 });
       R.fretboard(fb, Object.assign(fbOpts(), { markers, lefty: s.leftHanded }));
     };
-    refresh();
+    setFormat(fmt);
     // keep the preview following the cursor when typing
     ta.addEventListener('click', () => {
       const lineNo = ta.value.slice(0, ta.selectionStart).split('\n').length;

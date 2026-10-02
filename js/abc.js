@@ -469,14 +469,4 @@ K:G
 |:dc|BGG DGG|BGB dcB|cAA EAA|cAc edc|
 BGG DGG|BGB dcB|cBc Adc|BGG G:|`,
   };
-
-  // Level object for a custom song
-  ABC.level = function (song) {
-    const p = ABC.parse(song.abc);
-    return {
-      id: 'song-custom-' + song.id + '-full', unit: 14, title: song.title || p.meta.title || 'Untitled', custom: true, customId: song.id,
-      desc: (p.meta.composer ? p.meta.composer + '. ' : '') + 'Your song, written in the Creator.', abc: song.abc,
-      bpm: p.meta.bpm, meter: p.meta.meter, backing: p.meta.chords.length ? 'folk' : 'none', song: 'custom-' + song.id, origin: song.origin || 'Written by you',
-    };
-  };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1,4 +1,5 @@
-/* GuitarQuest: your own songs, written in ABC and kept in this browser's local storage.
+/* GuitarQuest: your own songs, kept in this browser's local storage. Each one is written either in ABC
+ * (song.abc) or as plain-text guitar tab (song.format 'tab', song.tab; read by js/tab.js).
  * They are shared by all profiles on this device; each profile keeps its own scores for them. */
 (function (G) {
   'use strict';
@@ -10,14 +11,22 @@
   CS.get = (id) => CS.list().find((s) => s.id === id) || null;
   const write = (list) => { const ok = S.set(KEY, list); CS.emit('change', list); return ok; };
 
-  // song: {id?, abc, file?}; title and details come from the ABC header. `file` is the song's .abc file in the songs folder (js/folder.js).
+  CS.formatOf = (s) => (s && s.format === 'tab' ? 'tab' : 'abc');
+  CS.textOf = (s) => (CS.formatOf(s) === 'tab' ? s.tab : s.abc);
+  CS.ext = (format) => (format === 'tab' ? '.tab' : '.abc');
+  CS.parse = (text, format, opts) => (format === 'tab' ? GQ.tab.parse(text, opts) : GQ.abc.parse(text, opts));
+
+  // song: {id?, format? ('abc' or 'tab'), text (or abc / tab), file?}; title and details come from the song's header.
+  // `file` is the song's file in the songs folder (js/folder.js).
   CS.save = function (song) {
-    const p = GQ.abc.parse(song.abc);
+    const format = song.format || (song.tab != null && song.abc == null ? 'tab' : 'abc');
+    const text = song.text != null ? song.text : format === 'tab' ? song.tab : song.abc;
+    const p = CS.parse(text, format);
     if (p.errors.length) throw new Error('Fix the errors before saving: ' + p.errors[0]);
     const list = CS.list(), now = new Date().toISOString();
     const entry = {
       id: song.id || 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36),
-      abc: song.abc, title: p.meta.title || 'Untitled', composer: p.meta.composer || '', key: p.meta.keyName,
+      ...(format === 'tab' ? { format, tab: text } : { abc: text }), title: p.meta.title || 'Untitled', composer: p.meta.composer || '', key: p.meta.keyName,
       meter: p.meta.meterText, bpm: p.meta.bpm, bars: p.bars, notes: p.events.filter((e) => e.kind !== 'rest').length,
       difficulty: difficultyOf(p), updated: now,
     };
@@ -40,12 +49,28 @@
     if (file) s.file = file; else delete s.file;
     write(list);
   };
-  // every song in one .abc file, numbered X:1, X:2 ...
-  CS.exportAll = () => CS.list().map((s, i) => { const t = s.abc.trim(); return /^X:/m.test(t) ? t.replace(/^X:.*$/m, 'X:' + (i + 1)) : 'X:' + (i + 1) + '\n' + t; }).join('\n\n') + '\n';
+  // every ABC song in one .abc file, numbered X:1, X:2 ... (tab songs are exported one by one)
+  CS.exportAll = () => CS.list().filter((s) => CS.formatOf(s) === 'abc').map((s, i) => { const t = s.abc.trim(); return /^X:/m.test(t) ? t.replace(/^X:.*$/m, 'X:' + (i + 1)) : 'X:' + (i + 1) + '\n' + t; }).join('\n\n') + '\n';
 
-  // import every tune in an .abc file; returns {saved: [entries], failed: [{title, error}]}
-  CS.importText = function (text) {
+  // the song as a level the lesson screen can play
+  CS.level = function (song) {
+    const format = CS.formatOf(song), p = CS.parse(CS.textOf(song), format);
+    return {
+      id: 'song-custom-' + song.id + '-full', unit: 14, title: song.title || p.meta.title || 'Untitled', custom: true, customId: song.id,
+      desc: (p.meta.composer ? p.meta.composer + '. ' : '') + 'Your song, written in the Creator.', [format]: CS.textOf(song),
+      bpm: p.meta.bpm, meter: p.meta.meter, backing: p.meta.chords.length ? 'folk' : 'none', song: 'custom-' + song.id, origin: song.origin || 'Written by you',
+    };
+  };
+
+  // import a file: a tab file becomes one song, an .abc file one song per tune; returns {saved: [entries], failed: [{title, error}]}
+  CS.importText = function (text, fileName) {
     const saved = [], failed = [];
+    if (GQ.tab.looks(text) && !/(^|\n)K:/.test(text)) {
+      // no Title: line: name the song after the file
+      const named = /(^|\n)\s*title\s*:/i.test(text) || !fileName ? text : 'Title: ' + fileName.replace(/\.[^.]*$/, '') + '\n' + text;
+      try { saved.push(CS.save({ format: 'tab', text: named })); } catch (e) { failed.push({ title: fileName || 'Tab', error: e.message }); }
+      return { saved, failed };
+    }
     for (const abc of GQ.abc.splitTunes(text)) {
       try { saved.push(CS.save({ abc })); }
       catch (e) { const t = /(^|\n)T:(.*)/.exec(abc); failed.push({ title: t ? t[2].trim() : 'Untitled', error: e.message }); }

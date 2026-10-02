@@ -196,9 +196,9 @@
     const cats = [['all', 'All'], ['mine', 'My songs'], ['folk', 'Folk'], ['classical', 'Classical'], ['blues', 'Blues'], ['rock', 'Rock'], ['original', 'Original']];
     const seg = h('div.seg', null, ...cats.map(([c, t]) => h('button', { class: c === cat ? 'on' : '', 'data-cat': c, onclick: (e) => { cat = c; for (const b of seg.children) b.classList.toggle('on', b === e.target); draw(); } }, t)));
     const grid = h('div.songs');
-    const fileIn = h('input', { type: 'file', accept: '.abc,text/plain,text/vnd.abc', multiple: true, hidden: true, onchange: async (e) => {
+    const fileIn = h('input', { type: 'file', accept: '.abc,.tab,.txt,text/plain,text/vnd.abc', multiple: true, hidden: true, onchange: async (e) => {
       let saved = 0; const failed = [];
-      for (const f of e.target.files) { const r = GQ.custom.importText(await f.text()); saved += r.saved.length; failed.push(...r.failed); }
+      for (const f of e.target.files) { const r = GQ.custom.importText(await f.text(), f.name); saved += r.saved.length; failed.push(...r.failed); }
       e.target.value = '';
       UI.toast(saved ? `Imported ${saved} song${saved > 1 ? 's' : ''} into My songs.` + (failed.length ? ` ${failed.length} could not be read: open them in the Creator to fix them.` : '') : 'Nothing imported: ' + (failed[0] ? failed[0].error : 'no tunes found.'), 6000);
       cat = 'mine'; for (const b of seg.children) b.classList.toggle('on', b.dataset.cat === 'mine'); draw();
@@ -206,27 +206,27 @@
     main.append(
       h('div.hero', null,
         h('div', null, h('h2', null, 'Song library'), h('p.muted.small', null, 'Traditional, public-domain and original pieces, plus your own songs in My songs. The origin of each one is on its card.')),
-        h('div.row', null, h('button.btn.primary', { onclick: () => UI.go('#/creator') }, '+ New song'), h('button.btn', { onclick: () => fileIn.click() }, 'Import .abc'), fileIn,
+        h('div.row', null, h('button.btn.primary', { onclick: () => UI.go('#/creator') }, '+ New song'), h('button.btn', { onclick: () => fileIn.click(), title: 'Add songs from .abc or tab (.tab, .txt) files' }, 'Import .abc or tab'), fileIn,
           h('a.btn.ghost', { href: '#/help' }, 'ABC help'))),
       h('div', { style: { marginBottom: '1rem' } }, seg), grid);
 
     const listenBtn = (key, levelFn) => h('button.btn.small.ghost.listen', { 'data-song': key, onclick: () => { const lv = levelFn(); if (GQ.preview.playing(lv)) GQ.preview.stop(); else GQ.preview.play(lv); } }, '♪ Listen');
     function customCard(cs) {
-      const lv = GQ.abc.level(cs);
+      const lv = GQ.custom.level(cs), isTab = GQ.custom.formatOf(cs) === 'tab';
       const r = p.levels[lv.id] || {};
       const del = h('button.btn.small.ghost', { onclick: () => {
         if (!del.dataset.sure) { del.dataset.sure = '1'; del.textContent = 'Delete this song?'; del.classList.add('danger'); setTimeout(() => { if (del.isConnected) { delete del.dataset.sure; del.textContent = 'Delete'; del.classList.remove('danger'); } }, 4000); return; }
         GQ.custom.remove(cs.id); UI.toast('Deleted ' + cs.title + '.'); draw();
       } }, 'Delete');
       return h('div.card.song.mine', null,
-        h('div.row.spread', null, h('span.badge.good', null, 'my song'), h('span.badge', null, 'Level ' + cs.difficulty + ' · ' + '●'.repeat(cs.difficulty) + '○'.repeat(3 - cs.difficulty))),
+        h('div.row.spread', null, h('span.badge.good', null, isTab ? 'my song · tab' : 'my song'), h('span.badge', null, 'Level ' + cs.difficulty + ' · ' + '●'.repeat(cs.difficulty) + '○'.repeat(3 - cs.difficulty))),
         h('h4', { style: { marginTop: '.5rem' } }, cs.title),
-        h('div.origin', null, [cs.composer, `${cs.key} · ${cs.meter} · ${cs.bars} bars · ${cs.notes} notes`].filter(Boolean).join(' · ')),
+        h('div.origin', null, [cs.composer, `${isTab ? '' : cs.key + ' · '}${cs.meter} · ${cs.bars} bars · ${cs.notes} notes`].filter(Boolean).join(' · ')),
         h('div.row', { style: { marginTop: '.6rem' } },
           listenBtn('custom-' + cs.id, () => lv),
           h('button.btn.small.primary', { onclick: () => UI.go('#/lesson/' + lv.id) }, 'Play'),
           h('button.btn.small', { onclick: () => UI.go('#/creator/' + cs.id) }, 'Edit'),
-          h('button.btn.small.ghost', { onclick: () => UI.download(UI.fileName(cs.title, '.abc'), cs.abc) }, 'Export'), del,
+          h('button.btn.small.ghost', { onclick: () => UI.download(UI.fileName(cs.title, GQ.custom.ext(GQ.custom.formatOf(cs))), GQ.custom.textOf(cs)) }, 'Export'), del,
           r.best ? h('span.small.muted', null, 'Best ' + r.best + '%') : null));
     }
     function draw() {
@@ -235,7 +235,7 @@
         const mine = GQ.custom.list().sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
         for (const cs of mine) grid.append(customCard(cs));
         if (cat === 'mine' && !mine.length) grid.append(h('div.card', null, h('h4', null, 'No songs of your own yet'),
-          h('p.small.muted', null, 'Write one in the Creator, or import an .abc file. ABC is a simple text format for music: see the help page.'),
+          h('p.small.muted', null, 'Write one in the Creator in ABC or as guitar tab, or import an .abc or tab file. See the help page for both formats.'),
           h('div.row', null, h('button.btn.primary', { onclick: () => UI.go('#/creator') }, '+ New song'), h('a.btn.ghost', { href: '#/help' }, 'ABC help'))));
       }
       if (cat === 'mine') return mark();

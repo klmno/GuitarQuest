@@ -1,6 +1,6 @@
 // Songs folder sync (js/folder.js) against an in-memory folder that behaves like the File System Access API.
 const { load } = require('./harness');
-const GQ = load('util', 'theory', 'notation', 'abc', 'custom', 'folder');
+const GQ = load('util', 'theory', 'notation', 'abc', 'tab', 'custom', 'folder');
 const F = GQ.folder, CS = GQ.custom;
 let fails = 0;
 const check = (ok, what) => { console.log((ok ? 'PASS ' : 'FAIL ') + what); if (!ok) fails++; };
@@ -98,6 +98,17 @@ const touch = async (dir, n, text) => { await sleep(5); dir.files.set(n, { text,
   // export all, readable by import
   const all = CS.exportAll();
   check(GQ.abc.splitTunes(all).length === CS.list().length && /X:1[\s\S]*X:2/.test(all), 'Download all puts every song in one file, numbered');
+
+  // tab songs are kept as .tab files
+  CS.save({ format: 'tab', text: GQ.tab.EXAMPLE });
+  await settle();
+  check(dir.files.has('A first riff.tab') && dir.files.get('A first riff.tab').text.includes('5h7'), 'a tab song is written as Title.tab');
+  await touch(dir, 'Folder riff.tab', GQ.tab.EXAMPLE.replace('Title: A first riff\n', ''));
+  r = await F.sync();
+  check(r.imported === 1 && CS.list().some((s) => s.format === 'tab' && s.title === 'Folder riff' && s.file === 'Folder riff.tab'), 'a .tab file in the folder is added, named after the file');
+  await touch(dir, 'A first riff.tab', GQ.tab.EXAMPLE.replace('5h7', '5p3'));
+  r = await F.sync();
+  check(r.updated === 1 && CS.list().find((s) => s.file === 'A first riff.tab').tab.includes('5p3'), 'a .tab file edited outside the app updates the song');
 
   // the folder disappears
   dir.entries = async function* () { throw err('NotFoundError'); };

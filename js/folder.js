@@ -1,11 +1,12 @@
-/* GuitarQuest: keep My songs in a folder on this computer, one .abc file per song, so they survive cleared browser data.
+/* GuitarQuest: keep My songs in a folder on this computer, one file per song (.abc, or .tab for songs written as tab),
+ * so they survive cleared browser data.
  * Uses the File System Access API (Chrome and Edge on a computer). The folder handle is kept in IndexedDB, because
  * localStorage cannot hold it. After a reload the browser may ask again before the app can write: until then saves
  * stay in the browser, and the next sync catches the folder up.
  *
  * Sync rules: a song and its file with the same text are left alone. When they differ, the newer one wins (the file's
  * modified time against the song's `updated`). Songs without a file get one named after the title; .abc files with
- * one tune that no song owns are added to My songs. Deleting a song deletes its file, even if the folder was not
+ * one tune, and .tab files, that no song owns are added to My songs. Deleting a song deletes its file, even if the folder was not
  * reachable at the time. Files are never deleted for any other reason. */
 (function (G) {
   'use strict';
@@ -95,20 +96,34 @@
   const norm = (t) => String(t).replace(/\r\n?/g, '\n').trim();
   const same = (a, b) => norm(a) === norm(b);
   const baseName = (title) => String(title || 'Untitled').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+/, '').slice(0, 80).trim() || 'Untitled';
+  const extOf = (s) => CS.ext(CS.formatOf(s));
   // "Title.abc", or "Title (2).abc" ... when that name is taken (compared without case, as on macOS and Windows)
-  F.fileName = function (title, taken) {
-    const b = baseName(title);
-    let name = b + '.abc';
-    for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${b} (${n}).abc`;
+  F.fileName = function (title, taken, ext) {
+    const b = baseName(title), x = ext || '.abc';
+    let name = b + x;
+    for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${b} (${n})${x}`;
     return name;
   };
-  // does this file name still belong to this title?
-  const fits = (file, title) => { const b = baseName(title).toLowerCase(), f = file.toLowerCase(); return f === b + '.abc' || (f.startsWith(b + ' (') && /^ \(\d+\)\.abc$/.test(f.slice(b.length))); };
+  // does this file name still belong to this song's title and format?
+  const fits = (file, s) => {
+    const b = baseName(s.title).toLowerCase(), f = file.toLowerCase(), x = extOf(s);
+    return f === b + x || (f.startsWith(b + ' (') && f.endsWith(x) && /^ \(\d+\)$/.test(f.slice(b.length, -x.length)));
+  };
+  // a song from a file's text: .tab files hold one tab song, .abc files ABC tunes
+  function fromFile(name, text) {
+    if (/\.tab$/i.test(name)) {
+      const named = /(^|\n)\s*title\s*:/i.test(text) ? text : 'Title: ' + name.replace(/\.tab$/i, '') + '\n' + text;
+      return { format: 'tab', text: named };
+    }
+    const tunes = GQ.abc.splitTunes(text);
+    if (tunes.length !== 1) throw new Error(tunes.length ? `has ${tunes.length} tunes. Use Songs > Import for a file with several` : 'no tune found (it needs an X: line and a K: line)');
+    return { format: 'abc', text: tunes[0] };
+  }
 
   async function readFolder(dir) {
     const files = new Map();
     for await (const [name, fh] of dir.entries()) {
-      if (fh.kind !== 'file' || !/\.abc$/i.test(name)) continue;
+      if (fh.kind !== 'file' || !/\.(abc|tab)$/i.test(name)) continue;
       const f = await fh.getFile();
       files.set(name, { text: await f.text(), modified: f.lastModified });
     }
@@ -128,14 +143,14 @@
     const s = CS.get(id), dir = F.handle;
     if (!s || !dir || F.state !== 'ready') return;
     let name = s.file;
-    if (!name || !fits(name, s.title)) {
+    if (!name || !fits(name, s)) {
       const taken = new Set(CS.list().filter((x) => x.id !== id && x.file).map((x) => x.file.toLowerCase()));
       for (;;) {
-        name = F.fileName(s.title, taken);
+        name = F.fileName(s.title, taken, extOf(s));
         try { await dir.getFileHandle(name); taken.add(name.toLowerCase()); } catch (e) { if (e.name === 'NotFoundError') break; throw e; }
       }
     }
-    await writeFile(dir, name, s.abc);
+    await writeFile(dir, name, CS.textOf(s));
     if (s.file && s.file !== name) await removeFile(dir, s.file);
     if (s.file !== name) CS.setFile(id, name);
   }
@@ -169,30 +184,26 @@
       // songs without a file: take over a file with exactly the same text (a folder chosen again after data was cleared)
       for (const s of songs) {
         if (s.file) continue;
-        for (const [name, f] of files) if (!owned.has(name) && same(f.text, s.abc)) { s.file = name; owned.add(name); CS.setFile(s.id, name); break; }
+        for (const [name, f] of files) if (!owned.has(name) && same(f.text, CS.textOf(s))) { s.file = name; owned.add(name); CS.setFile(s.id, name); break; }
       }
       const taken = new Set([...files.keys()].map((n) => n.toLowerCase()));
       for (const s of songs) {
         if (!s.file) {
-          const name = F.fileName(s.title, taken);
-          await writeFile(dir, name, s.abc);
+          const name = F.fileName(s.title, taken, extOf(s));
+          await writeFile(dir, name, CS.textOf(s));
           taken.add(name.toLowerCase()); owned.add(name); CS.setFile(s.id, name); r.written++;
           continue;
         }
         const f = files.get(s.file);
-        if (same(f.text, s.abc)) continue;
+        if (same(f.text, CS.textOf(s))) continue;
         if (f.modified > (Date.parse(s.updated) || 0)) {
           // edited outside the app
-          const tunes = GQ.abc.splitTunes(f.text);
-          try {
-            if (tunes.length !== 1) throw new Error(tunes.length ? `it now has ${tunes.length} tunes` : 'no tune found (it needs an X: line and a K: line)');
-            saveFromSync({ id: s.id, abc: tunes[0] }); r.updated++;
-          } catch (e) { r.skipped.push(`${s.file}: not read, ${e.message.replace(/^Fix the errors before saving: /, '')}. The song in the app is unchanged.`); }
+          try { saveFromSync({ id: s.id, ...fromFile(s.file, f.text) }); r.updated++; } catch (e) { r.skipped.push(`${s.file}: not read, ${e.message.replace(/^Fix the errors before saving: /, '')}. The song in the app is unchanged.`); }
         } else {
           // changed in the app while the folder could not be reached; a new title renames the file
           let name = s.file;
-          if (!fits(name, s.title)) { name = F.fileName(s.title, taken); taken.add(name.toLowerCase()); owned.add(name); }
-          await writeFile(dir, name, s.abc);
+          if (!fits(name, s)) { name = F.fileName(s.title, taken, extOf(s)); taken.add(name.toLowerCase()); owned.add(name); }
+          await writeFile(dir, name, CS.textOf(s));
           if (name !== s.file) { await removeFile(dir, s.file); CS.setFile(s.id, name); }
           r.written++;
         }
@@ -200,12 +211,7 @@
       // new files in the folder
       for (const [name, f] of files) {
         if (owned.has(name)) continue;
-        const tunes = GQ.abc.splitTunes(f.text);
-        if (tunes.length !== 1) {
-          r.skipped.push(tunes.length ? `${name}: has ${tunes.length} tunes. Use Songs > Import .abc for a file with several.` : `${name}: no tune found (it needs an X: line and a K: line).`);
-          continue;
-        }
-        try { saveFromSync({ abc: tunes[0], file: name }); r.imported++; }
+        try { saveFromSync({ ...fromFile(name, f.text), file: name }); r.imported++; }
         catch (e) { r.skipped.push(`${name}: ${e.message.replace(/^Fix the errors before saving: /, '')}. Open it in the Creator to fix it.`); }
       }
       F.last = Object.assign({ date: new Date().toISOString(), songs: CS.list().length }, r);
