@@ -65,7 +65,7 @@
             ['|', 'Bar line. Each bar lasts the meter, and the notes in it are placed by their column.'],
             ['5h7  7p5', 'Hammer-on, pull-off.'], ['5/7  7\\5', 'Slide up, down. A slide with nothing before it (/7) is played as a plain note.'],
             ['7b9  7b', 'Bend up to the pitch of fret 9; a whole step if no target is written.'], ['7~', 'Vibrato.'], ['x', 'Dead (muted) note: rhythm only.'],
-            ['x3', 'After a block: play the block three times.'], ['pm----', 'On a line under the block: palm mute for the notes above it.']]),
+            ['x3', 'After a block: play the block three times.'], ['PM----', 'On a line under the block (or right above it): palm mute for the notes in those columns. They play short and muffled, as with the edge of your picking hand resting on the strings by the bridge.']]),
           h('p.small.muted', null, 'Tab doesn’t say how long notes are, so the rhythm is read from the spacing: every note lands on the nearest eighth, or sixteenth when notes are close together. Space the notes evenly and check the result with Listen. Lines that are not tab (chord names, counts, comments) are ignored.'))),
         h('div', { id: 'h-examples' }, sec('More examples',
           ex('jig', 'A traditional jig in 6/8 with a pickup, repeats and an ending bar.'))),

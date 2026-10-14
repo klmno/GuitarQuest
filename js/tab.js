@@ -11,7 +11,7 @@
  *   D|-------5---------|  x3   "x3" after a block plays the block three times
  *   A|----7-------7----|
  *   E|-0-------6-5-----|
- *      pm-------|              pm under the block: palm mute for the notes above the dashes
+ *      pm-------|              PM or pm under the block (or right above it): palm mute for the notes in those columns
  *
  *   5h7 7p5  hammer-on, pull-off      5/7 7\5  slide up, down (attached to the note before it)
  *   7b9 7b   bend up to the pitch of fret 9 (a whole step if no target)    7~  vibrato   x  dead note
@@ -42,6 +42,10 @@
     return { label: m && m[1] ? m[1] : '', body, trail: trail.trim() };
   }
 
+  // a palm-mute line such as "PM-------|", "P.M. - - - -" or "pm   pm" (nothing else on it)
+  const pmLine = (l) => !!l && /p\.?\s?m/i.test(l) && /^[\sPpMm.\-|_~=]*$/.test(l) && !stringLine(l);
+  TAB.pmLine = pmLine;
+
   // does this text look like tab rather than ABC?
   TAB.looks = function (text) {
     const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
@@ -66,7 +70,7 @@ A|-----5-------7---|-----5-------5---|-----5-------7---|-----------------|
 E|-0-0-------------|-0-0-------------|-0-0-------------|-0---------------|
    pm-              pm-               pm-               pm`;
 
-  // Tidy up: keep the header lines, the string lines and the palm-mute lines under them; remove other
+  // Tidy up: keep the header lines, the string lines and the palm-mute lines under or above them; remove other
   // text (chord names, lyrics, comments), trailing spaces and extra blank lines. Returns {text, removed}.
   TAB.tidy = function (source) {
     const lines = String(source || '').replace(/\r\n?/g, '\n').split('\n');
@@ -78,10 +82,14 @@ E|-0-0-------------|-0-0-------------|-0-0-------------|-0---------------|
       const l = lines[i].replace(/\s+$/, '');
       if (!l.trim()) { if (out.length && !blank) { out.push(''); blank = true; } else if (out.length) add('blank lines'); continue; }
       if (HEADER.test(l) && !stringLine(l)) { out.push(l.trim().replace(/\s*:\s*/, ': ')); blank = false; continue; }
+      if (pmLine(l) && stringLine(lines[i + 1])) {   // palm mute marks above the block
+        if (out.length && !blank) out.push('');
+        out.push(l); blank = true; continue;
+      }
       if (stringLine(l)) {
         if (out.length && !blank && !stringLine(out[out.length - 1])) out.push('');
         while (i < lines.length && stringLine(lines[i])) out.push(lines[i++].replace(/\s+$/, ''));
-        while (i < lines.length && lines[i].trim() && !stringLine(lines[i]) && !HEADER.test(lines[i])) out.push(lines[i++].replace(/\s+$/, ''));
+        while (i < lines.length && lines[i].trim() && !stringLine(lines[i]) && !HEADER.test(lines[i])) { if (pmLine(lines[i])) out.push(lines[i].replace(/\s+$/, '')); else add('text lines'); i++; }
         i--; blank = false; continue;
       }
       if (!titleDone && l.trim().length <= 80 && !out.some((x) => stringLine(x))) { out.unshift('Title: ' + l.trim()); titleDone = true; continue; }
@@ -104,7 +112,7 @@ E|-0-0-------------|-0-0-------------|-0-0-------------|-0---------------|
     let meter = [4, 4], firstText = '';
 
     // ----- header lines and blocks of six string lines -----
-    const blocks = [];
+    const blocks = [], used = new Set();
     for (let i = 0; i < lines.length; i++) {
       const hm = HEADER.exec(lines[i]);
       if (hm && !stringLine(lines[i])) {
@@ -115,12 +123,14 @@ E|-0-0-------------|-0-0-------------|-0-0-------------|-0---------------|
         else { const mm = /^(\d+)\s*\/\s*(\d+)$/.exec(v); if (mm && +mm[1] > 0 && [1, 2, 4, 8, 16].includes(+mm[2])) { meter = [+mm[1], +mm[2]]; meta.meterText = mm[1] + '/' + mm[2]; } else err(i + 1, 'Time must be a meter such as 4/4, 3/4 or 6/8', replaceLine(i + 1, hm[1] + ': 4/4')); }
         continue;
       }
-      if (!stringLine(lines[i])) { if (!firstText && lines[i].trim() && !blocks.length) firstText = lines[i].trim(); continue; }
+      if (!stringLine(lines[i])) { if (!firstText && lines[i].trim() && !blocks.length && !pmLine(lines[i])) firstText = lines[i].trim(); continue; }
       const start = i, rows = [];
       while (i < lines.length && stringLine(lines[i])) rows.push({ ...stringLine(lines[i]), raw: lines[i] }), i++;
-      // lines under the block, up to a blank line or the next block: palm mute marks
+      // palm mute marks: the lines under the block (up to a blank line or the next block), as in this app's
+      // own tabs, or a PM line right above the block, as many tabs on the web write it
       const notes = [];
-      while (i < lines.length && lines[i].trim() && !stringLine(lines[i]) && !HEADER.test(lines[i])) notes.push(lines[i]), i++;
+      if (start > 0 && pmLine(lines[start - 1]) && !used.has(start - 1)) notes.push(lines[start - 1]);
+      while (i < lines.length && lines[i].trim() && !stringLine(lines[i]) && !HEADER.test(lines[i])) used.add(i), notes.push(lines[i]), i++;
       i--;
       if (rows.length !== 6) { err(start + 1, `A tab block needs six string lines, one per string; this one has ${rows.length}.`); continue; }
       blocks.push({ line: start + 1, rows, notes });

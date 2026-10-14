@@ -21,12 +21,14 @@
   // pickup (a comb at the pickup position), a brighter loop filter and a long sustain; the amp,
   // cabinet and room come after, in makeAmp().
   const TONE = () => store.settings().previewTone || 'clean';
+  // palm mute: the hand on the strings by the bridge damps the highs and shortens the note, but the pitch is still heard
+  const PM = (P.PM = { len: 0.8, t60: 0.45, lp: 0.35, gain: 1.4 });
   function pluck(ctx, midi, muted) {
     const tone = TONE(), electric = tone !== 'acoustic';
-    const key = ctx.sampleRate + '|' + midi + '|' + (muted ? 1 : 0) + '|' + (electric ? 'e' : 'a');
+    const key = ctx.sampleRate + '|' + midi + '|' + (muted ? PM.len + '/' + PM.t60 + '/' + PM.lp : 0) + '|' + (electric ? 'e' : 'a');
     if (cache.has(key)) return cache.get(key);
     const sr = ctx.sampleRate, f = T.midiToFreq(midi, store.settings().a4);
-    const len = Math.round(sr * (muted ? 0.35 : electric ? 2.8 : 2.4));
+    const len = Math.round(sr * (muted ? PM.len : electric ? 2.8 : 2.4));
     const buf = ctx.createBuffer(1, len, sr), out = buf.getChannelData(0);
     // loop filter w*a + (1-w)*b delays by (1-w); loop delay = Li - (1-w) + allpass delay = period L
     const w = electric ? 0.78 : 0.5;
@@ -39,7 +41,7 @@
     const pp = Math.max(1, Math.round(Li * (electric ? 0.14 : 0.2))), copy = line.slice();
     for (let i = 0; i < Li; i++) line[i] = copy[i] - copy[(i + pp) % Li];
     if (electric) { let m = 0; for (let k = 0; k < 2; k++) for (let i = 0; i < Li; i++) { m += 0.5 * (line[i] - m); line[i] = m; } }
-    const t60 = muted ? 0.12 : electric ? Math.max(2.2, 6.5 - (midi - 40) * 0.07) : Math.max(0.8, 4 - (midi - 40) * 0.04);
+    const t60 = muted ? PM.t60 : electric ? Math.max(2.2, 6.5 - (midi - 40) * 0.07) : Math.max(0.8, 4 - (midi - 40) * 0.04);
     const decay = Math.pow(0.001, 1 / (f * t60));
     const C = (1 - frac) / (1 + frac);
     const Dp = Math.max(1, Math.round(L * 0.23));               // neck-ish pickup position comb
@@ -52,7 +54,7 @@
       line[idx] = ap; idx = (idx + 1) % Li;
       let v = ap;
       if (electric) { const old = hist[n % (Dp + 1)]; hist[n % (Dp + 1)] = ap; v = ap - 0.85 * old; }
-      lp += (muted ? 0.25 : electric ? 0.45 : 0.6) * (v - lp);
+      lp += (muted ? PM.lp : electric ? 0.45 : 0.6) * (v - lp);
       hp = 0.995 * hp + lp;                                      // tiny DC guard
       out[n] = (lp - hp * 0.005) * 0.5;
     }
@@ -92,7 +94,8 @@
     const { ctx, out } = c;
     const src = ctx.createBufferSource(), g = ctx.createGain();
     src.buffer = pluck(ctx, midi - (opts.bend || 0), opts.pm);
-    g.gain.value = opts.gain || 0.7;
+    const gain = (opts.gain || 0.7) * (opts.pm ? PM.gain : 1);
+    g.gain.value = gain;
     src.connect(g).connect(out);
     const det = src.detune;
     if (opts.bend && det) { det.setValueAtTime(0, t + 0.06); det.linearRampToValueAtTime(opts.bend * 100, t + 0.26); }
@@ -102,7 +105,7 @@
       lfo.connect(depth).connect(det); lfo.start(t); lfo.stop(t + dur + 0.2);
     }
     const end = t + Math.min(dur + 0.12, src.buffer.duration);
-    g.gain.setValueAtTime(opts.gain || 0.7, Math.max(t, end - 0.08));
+    g.gain.setValueAtTime(gain, Math.max(t, end - 0.08));
     g.gain.linearRampToValueAtTime(0.0001, end);
     src.start(t); src.stop(end + 0.02);
   }

@@ -389,7 +389,7 @@
     // ----- ABC or tab -----
     const tabHint = h('div.tab-hint', null,
       h('p.small.muted', null, 'Write or paste guitar tab: six lines, high e on top, bar lines with |. Paste a whole tab from a website and it is read as it is. ',
-        'Marks: 5h7 hammer-on, 7p5 pull-off, 5/7 slide, 7b9 bend, 7~ vibrato, x dead note, x3 after a block repeats it, pm--- under the block palm-mutes. ',
+        'Marks: 5h7 hammer-on, 7p5 pull-off, 5/7 slide, 7b9 bend, 7~ vibrato, x dead note, x3 after a block repeats it, PM--- under (or right above) the block palm-mutes the notes in those columns: they sound short and muffled. ',
         h('a', { href: '#/help', onclick: (e) => { e.preventDefault(); UI.go('#/help'); setTimeout(() => { const el = document.getElementById('h-tab'); if (el) el.scrollIntoView(); }, 50); } }, 'More about tab'), '.'),
       h('p.small.muted', null, 'Tab has no note lengths, so the rhythm is read from the spacing: space the notes the way they are played, and check it with Listen.'));
     const fmtSeg = h('div.seg', { role: 'group', 'aria-label': 'Written as' }, ...[['abc', 'ABC'], ['tab', 'Tab']].map(([f, t]) => h('button', { 'data-f': f, 'data-sk': f, onclick: () => switchFormat(f) }, t)));
