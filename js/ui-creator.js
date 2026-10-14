@@ -157,6 +157,56 @@
     ta.addEventListener('scroll', () => { gutter.scrollTop = ta.scrollTop; });
     for (const ev of ['keyup', 'click', 'select', 'focus']) ta.addEventListener(ev, drawGutter);
     const problemsEl = h('ul.problems');
+    // ----- suggested fixes and tidying (each is one undoable edit: Ctrl+Z / Cmd+Z takes it back) -----
+    const undoKey = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
+    function replaceRange(start, end, str) {
+      ta.focus(); ta.setSelectionRange(start, end);
+      const ok = str ? document.execCommand && document.execCommand('insertText', false, str) : start === end || (document.execCommand && document.execCommand('delete'));
+      if (!ok) ta.setRangeText(str, start, end, 'end');
+      setText(ta.value, false);
+    }
+    // swap in a new text, changing only the part that differs (keeps undo and the scroll position)
+    function replaceAll(t) {
+      const a = ta.value;
+      if (a === t) return false;
+      let i = 0; while (i < a.length && i < t.length && a[i] === t[i]) i++;
+      let j = 0; while (j < a.length - i && j < t.length - i && a[a.length - 1 - j] === t[t.length - 1 - j]) j++;
+      const top = ta.scrollTop;
+      replaceRange(i, a.length - j, t.slice(i, t.length - j));
+      ta.scrollTop = top;
+      return true;
+    }
+    function applyFix(fix) {
+      const lines = ta.value.split('\n');
+      const at = lines.slice(0, fix.line - 1).reduce((a, l) => a + l.length + 1, 0) + fix.col;
+      replaceRange(at, at + fix.len, fix.insert);
+      UI.toast('Fixed: ' + fix.label.charAt(0).toLowerCase() + fix.label.slice(1) + '. ' + undoKey + ' undoes it.', 2500);
+    }
+    const parseAs = (t) => GQ.custom.parse(t, fmt);
+    // apply every suggested error fix, one after the other, until none is left
+    function fixAll() {
+      let t = ta.value, n = 0;
+      const seen = new Set([t]);
+      for (let k = 0; k < 300; k++) {
+        const x = parseAs(t).problems.find((q) => q.fix);
+        if (!x) break;
+        const next = GQ.abc.applyFix(t, x.fix);
+        if (seen.has(next)) break;
+        seen.add(next); t = next; n++;
+      }
+      if (replaceAll(t)) UI.toast(`Applied ${n} fix${n > 1 ? 'es' : ''}. ${undoKey} undoes them.`, 3000);
+    }
+    const ONE = { comments: 'comment', 'unused header lines': 'unused header line', 'lyrics lines': 'lyrics line', decorations: 'decoration', slurs: 'slur', 'grace notes': 'grace note',
+      'text annotations': 'text annotation', 'blank lines': 'blank line', 'stray characters': 'stray character', spacers: 'spacer', 'text lines': 'text line', 'sharps rewritten as ^': 'sharp rewritten as ^' };
+    function tidy() {
+      const r = (fmt === 'tab' ? GQ.tab : GQ.abc).tidy(ta.value);
+      const parts = Object.entries(r.removed).map(([what, n]) => n + ' ' + (n === 1 ? ONE[what] || what : what));
+      if (!replaceAll(r.text)) { UI.toast('Already tidy: nothing the app does not use.', 2500); return; }
+      UI.toast('Tidied up' + (parts.length ? ': ' + parts.join(', ') : '') + '. ' + undoKey + ' undoes it.', 5000);
+    }
+    const tidyBtn = h('button.btn.small', { onclick: tidy, title: 'Remove comments, lyrics, unused header lines, decorations, slurs, grace notes and characters the app cannot read. The notes stay the same.' }, '🧹 Tidy up');
+    const fixAllBtn = h('button.btn.small', { onclick: fixAll, title: 'Apply every suggested fix for the errors below' }, 'Fix all');
+    const editorBar = h('div.row.editor-bar', null, tidyBtn, fixAllBtn, h('span.small.muted', null, 'Errors with a suggested fix have a button in the list below.'));
     const statsEl = h('div.small.muted');
     const saveState = h('span.small.muted');
 
@@ -182,7 +232,12 @@
       const noNotes = parsed.errors.length === 1 && /no notes/.test(parsed.errors[0]);
       // errors first, then warnings; only the first MAX_SHOWN, with a count of the rest
       const all = parsed.problems.map((x) => ({ ...x, cls: 'err' })).concat(parsed.warnings.map((x) => ({ ...x, cls: 'warn' })));
-      for (const x of all.slice(0, MAX_SHOWN)) problemsEl.append(h('li.' + x.cls, { onclick: () => gotoLine(x.line) }, (x.line ? 'Line ' + x.line + ': ' : '') + x.msg));
+      for (const x of all.slice(0, MAX_SHOWN)) problemsEl.append(h('li.' + x.cls, { onclick: () => gotoLine(x.line) },
+        h('span', null, (x.line ? 'Line ' + x.line + ': ' : '') + x.msg),
+        x.fix ? h('button.btn.small.fix', { title: 'Apply this fix', onclick: (e) => { e.stopPropagation(); applyFix(x.fix); } }, '✓ ' + x.fix.label) : null));
+      const fixable = parsed.problems.filter((q) => q.fix).length;
+      fixAllBtn.hidden = fixable < 2;
+      fixAllBtn.textContent = `✓ Fix all errors (${fixable})`;
       if (all.length > MAX_SHOWN) {
         const ne = parsed.problems.length, nw = parsed.warnings.length;
         const what = ne && nw ? `problems (${ne} error${ne > 1 ? 's' : ''}, ${nw} warning${nw > 1 ? 's' : ''})` : ne ? 'errors' : 'warnings';
@@ -383,7 +438,7 @@
           h('div.fields', null, field('Title', fTitle), field('By', fBy), field('Meter', fMeter), field('Tempo (quarter notes per minute)', fTempo), ...abcOnly.slice(0, 5))),
         h('section.card.write', null, h('h3', { style: { marginTop: 0 } }, 'Write'),
           ...abcOnly.slice(5), tabHint,
-          editor, problemsEl),
+          editorBar, editor, problemsEl),
         h('section.card.preview-card', null,
           h('div.row.spread', null, h('h3', { style: { margin: 0 } }, 'Preview'), h('div.row', null, listenBtn)),
           h('div.strip.tab', null, tab), h('div.strip.staff', null, staff), scrub, statsEl)),

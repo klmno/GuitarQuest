@@ -66,13 +66,39 @@ A|-----5-------7---|-----5-------5---|-----5-------7---|-----------------|
 E|-0-0-------------|-0-0-------------|-0-0-------------|-0---------------|
    pm-              pm-               pm-               pm`;
 
+  // Tidy up: keep the header lines, the string lines and the palm-mute lines under them; remove other
+  // text (chord names, lyrics, comments), trailing spaces and extra blank lines. Returns {text, removed}.
+  TAB.tidy = function (source) {
+    const lines = String(source || '').replace(/\r\n?/g, '\n').split('\n');
+    const out = [], removed = {};
+    const add = (what) => { removed[what] = (removed[what] || 0) + 1; };
+    const hasTitle = lines.some((l) => HEADER.test(l) && !stringLine(l) && /^\s*title/i.test(l));
+    let titleDone = hasTitle, blank = false;
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i].replace(/\s+$/, '');
+      if (!l.trim()) { if (out.length && !blank) { out.push(''); blank = true; } else if (out.length) add('blank lines'); continue; }
+      if (HEADER.test(l) && !stringLine(l)) { out.push(l.trim().replace(/\s*:\s*/, ': ')); blank = false; continue; }
+      if (stringLine(l)) {
+        if (out.length && !blank && !stringLine(out[out.length - 1])) out.push('');
+        while (i < lines.length && stringLine(lines[i])) out.push(lines[i++].replace(/\s+$/, ''));
+        while (i < lines.length && lines[i].trim() && !stringLine(lines[i]) && !HEADER.test(lines[i])) out.push(lines[i++].replace(/\s+$/, ''));
+        i--; blank = false; continue;
+      }
+      if (!titleDone && l.trim().length <= 80 && !out.some((x) => stringLine(x))) { out.unshift('Title: ' + l.trim()); titleDone = true; continue; }
+      add('text lines');
+    }
+    while (out.length && !out[out.length - 1].trim()) out.pop();
+    return { text: out.join('\n'), removed };
+  };
+
   TAB.parse = function (source, opts) {
     opts = opts || {};
     const setup = opts.setup || T.setup;
     const problems = [], warnings = [];
-    const err = (line, msg) => problems.push({ line, msg });
+    const err = (line, msg, fix) => problems.push(fix ? { line, msg, fix } : { line, msg });
     const warn = (line, msg) => { if (!warnings.some((w) => w.msg === msg)) warnings.push({ line, msg }); };
     const lines = String(source || '').replace(/\r\n?/g, '\n').split('\n');
+    const replaceLine = (line, insert) => ({ label: 'Use ' + insert, line, col: 0, len: (lines[line - 1] || '').length, insert });
     const meta = { title: '', composer: '', origin: '', rhythm: '', notes: '', bpm: null, meterText: '4/4', keyName: 'Tab', unit: null,
       position: 0, octave: 0, play: 'melody', chords: [], format: 'tab' };
     let meter = [4, 4], firstText = '';
@@ -85,8 +111,8 @@ E|-0-0-------------|-0-0-------------|-0-0-------------|-0---------------|
         const k = hm[1].toLowerCase(), v = hm[2].trim();
         if (k === 'title') meta.title = v;
         else if (k === 'by' || k === 'artist' || k === 'composer') meta.composer = v;
-        else if (k === 'tempo' || k === 'bpm') { const n = parseFloat(v); if (n >= 20 && n <= 400) meta.bpm = Math.round(n); else err(i + 1, 'Tempo must be a number of beats a minute, such as 90'); }
-        else { const mm = /^(\d+)\s*\/\s*(\d+)$/.exec(v); if (mm && +mm[1] > 0 && [1, 2, 4, 8, 16].includes(+mm[2])) { meter = [+mm[1], +mm[2]]; meta.meterText = mm[1] + '/' + mm[2]; } else err(i + 1, 'Time must be a meter such as 4/4, 3/4 or 6/8'); }
+        else if (k === 'tempo' || k === 'bpm') { const n = parseFloat(v); if (n >= 20 && n <= 400) meta.bpm = Math.round(n); else err(i + 1, 'Tempo must be a number of beats a minute, such as 90', replaceLine(i + 1, hm[1] + ': ' + (n > 400 ? 400 : n > 0 && n < 20 ? 20 : 90))); }
+        else { const mm = /^(\d+)\s*\/\s*(\d+)$/.exec(v); if (mm && +mm[1] > 0 && [1, 2, 4, 8, 16].includes(+mm[2])) { meter = [+mm[1], +mm[2]]; meta.meterText = mm[1] + '/' + mm[2]; } else err(i + 1, 'Time must be a meter such as 4/4, 3/4 or 6/8', replaceLine(i + 1, hm[1] + ': 4/4')); }
         continue;
       }
       if (!stringLine(lines[i])) { if (!firstText && lines[i].trim() && !blocks.length) firstText = lines[i].trim(); continue; }

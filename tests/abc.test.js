@@ -81,5 +81,19 @@ for (const [k, abc] of Object.entries(A.EXAMPLES)) {
   const ep = A.parse(abc);
   eq({ errors: ep.errors, warnings: ep.warnings.map((w) => w.msg) }, { errors: [], warnings: [] }, 'help example "' + k + '" is clean (' + ep.events.filter((e) => e.kind !== 'rest').length + ' notes, ' + ep.bars + ' bars)');
 }
+// suggested fixes and tidying
+eq([A.shiftOctave('C,,', 2), A.shiftOctave('^c', -1), A.shiftOctave("e'", -2), A.shiftOctave('B', 1)], ['C', '^C', 'E', 'b'], 'octave shifts');
+eq([A.lengthText(1), A.lengthText(2), A.lengthText(0.5), A.lengthText(1.5), A.lengthText(5)], ['', '2', '/2', '3/2', '5'], 'length text');
+for (const [k, abc] of Object.entries(A.EXAMPLES)) {
+  const a = A.parse(abc), t = A.parse(A.tidy(abc).text);
+  eq([t.events.length, t.totalBeats, t.errors.length], [a.events.length, a.totalBeats, 0], 'tidy keeps the music of "' + k + '"');
+}
+{
+  let txt = 'X:1\nM:4x4\nL:1/8\nQ:fast\nK:Hm\nC,,,,2 D2 F#2 @E2 | [CEG c2 B2 c2 |\n"Am A2 B2 c2 d2 |';
+  for (let n = 0; n < 50; n++) { const f = A.parse(txt).problems.find((x) => x.fix); if (!f) break; txt = A.applyFix(txt, f.fix); }
+  eq(A.parse(txt).errors, [], 'applying the suggested fixes clears every error');
+}
+eq(A.parse('X:1\nL:1/4\nK:C\nC | D E F G | A B c d |]').warnings.map((w) => w.fix && w.fix.insert), [], 'a pickup bar is not flagged');
+eq(A.parse('X:1\nL:1/4\nK:C\nC D E F | G A | B c d e | c4 |]').warnings.map((w) => w.fix && w.fix.insert), ['z2 '], 'a short bar gets a rest to fill it');
 console.log(bad ? `${bad} failures` : 'ABC reader OK');
 process.exitCode = bad ? 1 : 0;

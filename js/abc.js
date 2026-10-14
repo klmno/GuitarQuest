@@ -87,15 +87,105 @@
   }
   ABC.chordShape = chordShape;
 
+  // An ABC pitch moved by k octaves: C -> c -> c' up, C -> C, -> C,, down (accidentals kept)
+  ABC.shiftOctave = function (tok, k) {
+    const m = /^([_^=]*)([A-Ga-g])([,']*)$/.exec(tok);
+    if (!m) return tok;
+    let o = (m[2] === m[2].toLowerCase() ? 1 : 0) + (m[3].match(/'/g) || []).length - (m[3].match(/,/g) || []).length + k;
+    const L = m[2].toUpperCase();
+    return m[1] + (o >= 1 ? L.toLowerCase() + "'".repeat(o - 1) : L + ','.repeat(-o));
+  };
+  // a note length multiplier as ABC writes it: 1 -> "", 2 -> "2", 1/2 -> "/2", 3/2 -> "3/2"
+  ABC.lengthText = function (x) {
+    for (const den of [1, 2, 4, 8, 16, 32, 3, 6, 12]) {
+      const num = Math.round(x * den);
+      if (num > 0 && Math.abs(num / den - x) < 1e-6) {
+        const g = (a, b) => (b ? g(b, a % b) : a), d = g(num, den);
+        const n = num / d, dd = den / d;
+        return dd === 1 ? (n === 1 ? '' : String(n)) : (n === 1 ? '' : n) + '/' + dd;
+      }
+    }
+    return '';
+  };
+
+  // Tidy up: remove what the app does not use (comments, lyrics and other unused header fields,
+  // decorations, grace notes, slurs, annotations, spacers, blank lines, extra spaces), then any
+  // character the reader cannot read. Returns {text, removed: {what: count}}.
+  const KEEP_FIELDS = 'XTCMLQKIV';
+  const DIRECTIVE = /^\s*(position|octave|play)\b/i;
+  ABC.tidy = function (source) {
+    const removed = {};
+    const add = (what, n) => { if (n) removed[what] = (removed[what] || 0) + (n || 1); };
+    const out = [];
+    let inBody = false;
+    for (const raw0 of String(source || '').replace(/\r\n?/g, '\n').split('\n')) {
+      let raw = raw0.replace(/\t/g, ' ');
+      if (/^%%/.test(raw)) { if (DIRECTIVE.test(raw.slice(2))) out.push('I:' + raw.slice(2).trim()); else add('comments', 1); continue; }
+      const ci = raw.indexOf('%');
+      if (ci >= 0) { add('comments', 1); raw = raw.slice(0, ci); }
+      raw = raw.replace(/\s+$/, '');
+      if (!raw.trim()) { if (raw0.trim() === '' && out.length) add('blank lines', 1); continue; }
+      const f = /^([A-Za-z]):(.*)$/.exec(raw);
+      if (f && (!inBody || 'KMLQVIwWTNPRHr'.includes(f[1]))) {
+        if (!KEEP_FIELDS.includes(f[1]) || (f[1] === 'I' && !DIRECTIVE.test(f[2]))) { add(f[1] === 'w' || f[1] === 'W' ? 'lyrics lines' : 'unused header lines', 1); continue; }
+        if (f[1] === 'K') inBody = true;
+        out.push(f[1] + ':' + f[2].trim());
+        continue;
+      }
+      // body line: walk it the way the reader does, keeping only what is played or shown
+      let s = '', i = 0;
+      while (i < raw.length) {
+        const c = raw[i];
+        if (c === '"') {
+          const j = raw.indexOf('"', i + 1);
+          if (j < 0) { add('stray characters', 1); i++; continue; }
+          const txt = raw.slice(i + 1, j).trim();
+          if (!txt || /^[\^_<>@]/.test(txt)) add('text annotations', 1); else s += raw.slice(i, j + 1);
+          i = j + 1; continue;
+        }
+        if (c === '[' && /^\[[KMLQIV]:[^\]]*\]/.test(raw.slice(i))) { const m = /^\[[KMLQIV]:[^\]]*\]/.exec(raw.slice(i)); s += m[0]; i += m[0].length; continue; }
+        if (c === '!' || c === '+') { const j = raw.indexOf(c, i + 1); add('decorations', 1); i = j < 0 ? raw.length : j + 1; continue; }
+        if (c === '{') { const j = raw.indexOf('}', i + 1); add('grace notes', 1); i = j < 0 ? raw.length : j + 1; continue; }
+        if ('.~HLMOPSTuv'.includes(c)) { add('decorations', 1); i++; continue; }
+        if (c === '(' && !/^\(\d/.test(raw.slice(i))) { add('slurs', 1); i++; continue; }
+        if (c === ')') { i++; continue; }
+        if ('`y\\'.includes(c)) { add('spacers', 1); i++; continue; }
+        s += c; i++;
+      }
+      s = s.replace(/ {2,}/g, ' ').trim();
+      if (s) out.push(s);
+    }
+    let text = out.join('\n');
+    // then anything the reader still cannot read
+    for (let n = 0; n < 500; n++) {
+      const p = ABC.parse(text);
+      const x = p.problems.find((q) => q.fix && /^Unexpected/.test(q.msg));
+      if (!x) break;
+      text = ABC.applyFix(text, x.fix);
+      add(x.fix.insert ? 'sharps rewritten as ^' : 'stray characters', 1);
+    }
+    text = text.split('\n').map((l) => l.replace(/ {2,}/g, ' ').replace(/\s+$/, '')).filter((l) => l.trim()).join('\n');
+    return { text, removed };
+  };
+  // apply one suggested fix to the text
+  ABC.applyFix = function (text, fix) {
+    const lines = String(text).split('\n');
+    const at = lines.slice(0, fix.line - 1).reduce((a, l) => a + l.length + 1, 0) + fix.col;
+    return text.slice(0, at) + fix.insert + text.slice(at + fix.len);
+  };
+
   // ---------- main parser ----------
   // opts: {setup, pos (override I:position)}
   ABC.parse = function (source, opts) {
     opts = opts || {};
     const setup = opts.setup || T.setup;
     const problems = [], warnings = [];
-    const err = (line, msg) => problems.push({ line, msg });
-    const warn = (line, msg) => { if (!warnings.some((w) => w.msg === msg)) warnings.push({ line, msg }); };
+    // a problem can carry a suggested fix: an edit of one line {label, line, col, len, insert}
+    const err = (line, msg, fix) => problems.push(fix ? { line, msg, fix } : { line, msg });
+    const warn = (line, msg, fix) => { if (!warnings.some((w) => w.msg === msg)) warnings.push(fix ? { line, msg, fix } : { line, msg }); };
     const lines = String(source || '').replace(/\r\n?/g, '\n').split('\n');
+    const remove = (line, col, len, what) => ({ label: 'Remove ' + what, line, col, len, insert: '' });
+    const replaceLine = (line, insert, label) => ({ label, line, col: 0, len: (lines[line - 1] || '').length, insert });
 
     const meta = { title: '', composer: '', origin: '', rhythm: '', notes: '', bpm: null, meterText: '4/4', keyName: 'C', unit: null,
       position: 0, octave: -1, play: 'melody', chords: [] };
@@ -107,9 +197,10 @@
       const m = /^\s*(position|octave|play)\s+(.+?)\s*$/i.exec(text);
       if (!m) return;
       const k = m[1].toLowerCase(), v = m[2].trim().toLowerCase();
-      if (k === 'position') { const n = parseInt(v, 10); if (n >= 0 && n <= 19) meta.position = n; else err(line, 'I:position must be a fret from 0 to 19'); }
-      if (k === 'octave') { const n = parseInt(v, 10); if (n >= -3 && n <= 2) meta.octave = n; else err(line, 'I:octave must be between -3 and 2'); }
-      if (k === 'play') { if (v === 'chords' || v === 'melody') meta.play = v; else err(line, 'I:play must be "melody" or "chords"'); }
+      const set = (val) => { const raw = lines[line - 1] || ''; const re = new RegExp('(' + k + '\\s+)([^\\]\\s]+)', 'i'); return re.test(raw) ? replaceLine(line, raw.replace(re, '$1' + val), 'Use ' + k + ' ' + val) : null; };
+      if (k === 'position') { const n = parseInt(v, 10); if (n >= 0 && n <= 19) meta.position = n; else err(line, 'I:position must be a fret from 0 to 19', set(isNaN(n) ? 0 : GQ.clamp(n, 0, 19))); }
+      if (k === 'octave') { const n = parseInt(v, 10); if (n >= -3 && n <= 2) meta.octave = n; else err(line, 'I:octave must be between -3 and 2', set(isNaN(n) ? -1 : GQ.clamp(n, -3, 2))); }
+      if (k === 'play') { if (v === 'chords' || v === 'melody') meta.play = v; else err(line, 'I:play must be "melody" or "chords"', set(/^ch/.test(v) ? 'chords' : 'melody')); }
     };
 
     lines.forEach((raw, idx) => {
@@ -129,10 +220,10 @@
           case 'O': meta.origin = v; break;
           case 'R': meta.rhythm = v; break;
           case 'N': meta.notes = v; break;
-          case 'M': { const m = parseMeter(v); if (!m) err(ln, 'Cannot read the meter "' + v + '" (try 4/4, 3/4 or 6/8)'); else { if (inBody) bodyLines.push({ field: 'M', value: m, line: ln }); else { meter = m; meta.meterText = v; } } break; }
-          case 'L': { const u = parseFraction(v); if (!u) err(ln, 'L: needs a fraction such as 1/8'); else if (inBody) bodyLines.push({ field: 'L', value: u, line: ln }); else unit = u; break; }
-          case 'Q': { const b = parseTempo(v); if (b) { if (inBody) bodyLines.push({ field: 'Q', value: b, line: ln }); else meta.bpm = b; } else err(ln, 'Cannot read the tempo "' + v + '" (try Q:1/4=100)'); break; }
-          case 'K': { const kk = parseKey(v); if (kk.error) err(ln, kk.error); if (inBody) bodyLines.push({ field: 'K', value: kk, line: ln }); else { key = kk; meta.keyName = kk.name; inBody = true; } break; }
+          case 'M': { const m = parseMeter(v); if (!m) err(ln, 'Cannot read the meter "' + v + '" (try 4/4, 3/4 or 6/8)', replaceLine(ln, 'M:4/4', 'Use M:4/4')); else { if (inBody) bodyLines.push({ field: 'M', value: m, line: ln }); else { meter = m; meta.meterText = v; } } break; }
+          case 'L': { const u = parseFraction(v); if (!u) err(ln, 'L: needs a fraction such as 1/8', replaceLine(ln, 'L:1/8', 'Use L:1/8')); else if (inBody) bodyLines.push({ field: 'L', value: u, line: ln }); else unit = u; break; }
+          case 'Q': { const b = parseTempo(v); if (b) { if (inBody) bodyLines.push({ field: 'Q', value: b, line: ln }); else meta.bpm = b; } else { const n = parseInt(v.replace(/^.*=/, ''), 10), q = n >= 20 && n <= 400 ? n : 100; err(ln, 'Cannot read the tempo "' + v + '" (try Q:1/4=100)', replaceLine(ln, 'Q:1/4=' + q, 'Use Q:1/4=' + q)); } break; }
+          case 'K': { const kk = parseKey(v); if (kk.error) err(ln, kk.error, replaceLine(ln, 'K:C', 'Use K:C')); if (inBody) bodyLines.push({ field: 'K', value: kk, line: ln }); else { key = kk; meta.keyName = kk.name; inBody = true; } break; }
           case 'I': directive(v, ln); break;
           case 'V': { const id = v.split(/\s+/)[0]; if (voice === null) voice = bodyLines.some((b) => b.text) ? '(first)' : id; skipVoice = id !== voice; if (skipVoice) warn(ln, 'Only the first voice is played'); break; }
           case 'w': case 'W': break; // lyrics
@@ -140,18 +231,21 @@
         }
         return;
       }
-      if (!inBody) { err(ln, 'Notes start before the K: line. The header must end with K: (for example K:C).'); inBody = true; }
+      if (!inBody) { err(ln, 'Notes start before the K: line. The header must end with K: (for example K:C).', { label: 'Add K:C above this line', line: ln, col: 0, len: 0, insert: 'K:C\n' }); inBody = true; }
       if (!skipVoice) bodyLines.push({ text, line: ln });
     });
-    if (!inBody) err(1, 'No K: line found: the header must end with a key, for example K:C');
+    if (!inBody) {
+      let last = lines.length; while (last > 1 && !lines[last - 1].trim()) last--;
+      err(1, 'No K: line found: the header must end with a key, for example K:C', { label: 'Add K:C at the end of the header', line: last, col: (lines[last - 1] || '').length, len: 0, insert: (lines[last - 1] || '').trim() ? '\nK:C' : 'K:C' });
+    }
     if (!unit) unit = meter.value < 0.75 ? 1 / 16 : 1 / 8;
     meta.unit = unit;
 
     // ---------- body tokens -> elements ----------
     const els = [];        // {kind:'note'|'rest'|'bar'|'ending', ...}
-    let barAcc = {}, chordSym = null, tuplet = null, broken = null, curUnit = unit, curKey = key;
+    let barAcc = {}, chordSym = null, chordAt = null, tuplet = null, broken = null, curUnit = unit, curKey = key;
     const pushSound = (el) => {
-      if (chordSym) { el.chordSym = chordSym; chordSym = null; }
+      if (chordSym) { el.chordSym = chordSym; el.chordAt = chordAt; chordSym = null; }
       if (tuplet) { el.dur *= tuplet.q / tuplet.p; tuplet.left--; if (tuplet.left <= 0) tuplet = null; }
       if (broken) { el.dur *= broken; broken = null; }
       els.push(el);
@@ -192,9 +286,13 @@
         if (' \t`y\\'.includes(c)) { i++; continue; }
         if (c === '"') {
           const j = s.indexOf('"', i + 1);
-          if (j < 0) { err(line, 'A chord symbol is missing its closing "'); break; }
+          if (j < 0) {
+            const nm = /^"([A-G][#b]?[a-z0-9+#]*(?:\/[A-G][#b]?)?)(?=\s|$)/.exec(s.slice(i));
+            err(line, 'A chord symbol is missing its closing "', nm ? { label: 'Close it: "' + nm[1] + '"', line, col: i + nm[0].length, len: 0, insert: '"' } : remove(line, i, 1, 'the unmatched "'));
+            break;
+          }
           const txt = s.slice(i + 1, j).trim();
-          if (txt && !/^[\^_<>@]/.test(txt)) chordSym = txt;
+          if (txt && !/^[\^_<>@]/.test(txt)) { chordSym = txt; chordAt = { line, col: i, len: j + 1 - i }; }
           i = j + 1; continue;
         }
         if (c === '!' || c === '+') { const j = s.indexOf(c, i + 1); i = j < 0 ? s.length : j + 1; continue; }
@@ -215,7 +313,7 @@
           let n = 1; while (s[i + n] === c) n++;
           const factor = 1 - Math.pow(0.5, n); // > : x1.5 / x0.5, >> : x1.75 / x0.25
           const prev = [...els].reverse().find((e) => e.kind === 'note' || e.kind === 'rest');
-          if (!prev) err(line, 'A broken rhythm ' + c + ' needs a note before it');
+          if (!prev) err(line, 'A broken rhythm ' + c + ' needs a note before it', remove(line, i, n, '"' + c.repeat(n) + '"'));
           else if (c === '>') { prev.dur *= 1 + factor; broken = 1 - factor; }
           else { prev.dur *= 1 - factor; broken = 1 + factor; }
           i += n; continue;
@@ -227,10 +325,10 @@
           if (rest.startsWith('::')) { len = 2; start = end = true; }
           else {
             const m = /^(:*)(\[\||\|\]|\|\||\|)(:*)([1-9])?/.exec(rest);
-            if (!m) { err(line, 'Cannot read the bar line at "' + rest.slice(0, 4) + '"'); i++; continue; }
+            if (!m) { err(line, 'Cannot read the bar line at "' + rest.slice(0, 4) + '"', remove(line, i, 1, '"' + c + '"')); i++; continue; }
             len = m[0].length; end = m[1].length > 0; start = m[3].length > 0; ending = m[4] ? +m[4] : null;
           }
-          els.push({ kind: 'bar', line, start, end });
+          els.push({ kind: 'bar', line, col: i, start, end, unit: curUnit });
           barAcc = {};
           if (ending) els.push({ kind: 'ending', n: ending, line });
           i += len; continue;
@@ -250,14 +348,14 @@
           if (end) { els.push({ kind: 'ending', n: +end[1], line }); i += end[0].length; continue; }
           // chord of notes
           const j = s.indexOf(']', i + 1);
-          if (j < 0) { err(line, 'A chord [ ... ] is missing its closing ]'); break; }
+          if (j < 0) { const e = i + 1 + /^[^\s|]*/.exec(s.slice(i + 1))[0].length; err(line, 'A chord [ ... ] is missing its closing ]', { label: 'Close the chord with ]', line, col: e, len: 0, insert: ']' }); break; }
           const inner = s.slice(i + 1, j);
           const midis = [];
           let k = 0, innerMult = 1;
           while (k < inner.length) {
             if (inner[k] === ' ' || inner[k] === '-') { k++; continue; }
             const p = pitchAt(inner, k, line);
-            if (!p) { err(line, 'Cannot read "' + inner[k] + '" inside the chord [' + inner + ']'); break; }
+            if (!p) { err(line, 'Cannot read "' + inner[k] + '" inside the chord [' + inner + ']', remove(line, i + 1 + k, 1, '"' + inner[k] + '"')); break; }
             k += p.len;
             const L = readLength(inner, k); k += L.len;
             if (!midis.length) innerMult = L.mult;
@@ -285,11 +383,14 @@
           i += p.len;
           const L = readLength(s, i); i += L.len;
           let tie = false; if (s[i] === '-') { tie = true; i++; }
-          pushSound({ kind: 'note', midis: [p.midi], dur: 4 * curUnit * L.mult, line, tie });
+          pushSound({ kind: 'note', midis: [p.midi], dur: 4 * curUnit * L.mult, line, tie, col: i - p.len - L.len - (tie ? 1 : 0), plen: p.len });
           continue;
         }
         if (c === '&') { warn(line, 'Voice overlay (&) is not supported: only the first part is played'); break; }
-        err(line, 'Unexpected "' + c + '" (column ' + (i + 1) + ')');
+        // "C#" / "Bb" written the usual way: suggest ABC's ^C / _B
+        const prevNote = /([_^=]*)([A-Ga-g])([,']*)$/.exec(s.slice(0, i));
+        if (c === '#' && prevNote && !prevNote[1]) { const at = i - prevNote[0].length; err(line, 'Unexpected "#" (column ' + (i + 1) + '): ABC writes a sharp before the note', { label: 'Write ^' + prevNote[2] + prevNote[3], line, col: at, len: prevNote[0].length + 1, insert: '^' + prevNote[2] + prevNote[3] }); }
+        else err(line, 'Unexpected "' + c + '" (column ' + (i + 1) + ')', remove(line, i, 1, '"' + c + '"'));
         i++;
       }
     }
@@ -331,17 +432,20 @@
     const events = [];
     let beat = 0, hand = pos > 0 ? pos : 1, prevPlace = null, curMeter = meter, bpbBeats = meter.value * 4, barStartBeat = 0, barIndex = 0;
     let currentChord = null, lastSym = null;
-    const barMarks = [];
+    const barMarks = [], barSrc = [];
     const fingerOf = (fret) => {
       if (fret <= 0) return 0;
       if (fret < hand) hand = fret; else if (fret > hand + 3) hand = fret - 3;
       return fret - hand + 1;
     };
-    const place = (midi, line) => {
+    const place = (midi, line, e) => {
       const pl = T.placePitch(midi, pos, prevPlace, setup);
       if (!pl) {
-        const low = T.openMidi(6, setup);
-        err(line, `${T.midiName(midi)} is ${midi < low ? 'below' : 'above'} the guitar's range. Move it an octave (, or ') or use I:octave.`);
+        const low = T.openMidi(6, setup), high = T.openMidi(1, setup) + T.FRETS;
+        const k = midi < low ? Math.ceil((low - midi) / 12) : -Math.ceil((midi - high) / 12);
+        const tok = e && e.col != null ? (lines[e.line - 1] || '').substr(e.col, e.plen) : null;
+        const fix = tok && /^[_^=]*[A-Ga-g][,']*$/.test(tok) ? { label: `Write ${ABC.shiftOctave(tok, k)} (${Math.abs(k)} octave${Math.abs(k) > 1 ? 's' : ''} ${k > 0 ? 'up' : 'down'})`, line: e.line, col: e.col, len: e.plen, insert: ABC.shiftOctave(tok, k) } : null;
+        err(line, `${T.midiName(midi)} is ${midi < low ? 'below' : 'above'} the guitar's range. Move it an octave (, or ') or use I:octave.`, fix);
         return null;
       }
       prevPlace = pl;
@@ -366,12 +470,12 @@
       if (e.kind === 'tempo') { if (!meta.bpm) meta.bpm = e.bpm; continue; }
       if (e.kind === 'ending') continue;
       if (e.kind === 'bar') {
-        if (beat > 0 && Math.abs(beat - (barMarks.length ? barMarks[barMarks.length - 1] : 0)) > 1e-6) barMarks.push(beat);
+        if (beat > 0 && Math.abs(beat - (barMarks.length ? barMarks[barMarks.length - 1] : 0)) > 1e-6) { barMarks.push(beat); barSrc.push(e); }
         barIndex++; barStartBeat = beat; continue;
       }
       if (e.chordSym) {
         const shape = chordShape(e.chordSym);
-        if (!shape) { if (e.chordSym !== lastSym) warn(e.line, `No guitar shape for the chord "${e.chordSym}": it is shown but not played`); }
+        if (!shape) { if (e.chordSym !== lastSym) warn(e.line, `No guitar shape for the chord "${e.chordSym}": it is shown but not played`, e.chordAt ? remove(e.chordAt.line, e.chordAt.col, e.chordAt.len, 'the chord symbol') : null); }
         else { currentChord = shape; if (!meta.chords.includes(shape.name)) meta.chords.push(shape.name); }
         lastSym = e.chordSym;
       }
@@ -386,7 +490,7 @@
       if (e.kind === 'rest') { push({ kind: 'rest', notes: [], dur: e.dur, backChord: currentChord }); beat += e.dur; continue; }
       const sounding = e.midis.map((m) => m + shift);
       if (sounding.length === 1) {
-        const n = place(sounding[0], e.line);
+        const n = place(sounding[0], e.line, e);
         if (n) push({ kind: 'note', notes: [n], dur: e.dur, backChord: currentChord });
         else push({ kind: 'rest', notes: [], dur: e.dur });
       } else {
@@ -406,7 +510,10 @@
     lens.forEach((len, k) => {
       if (curMeter.free || full(len) || k === 0 || k === lens.length - 1) return;
       if ((k > 0 && full(lens[k - 1] + len)) || (k + 1 < lens.length && full(len + lens[k + 1]))) return;
-      warn(0, `Bar ${k + 1} lasts ${+len.toFixed(3)} beats but the meter asks for ${bpb}. Check the note lengths in that bar.`);
+      // a short bar can be filled with a rest just before its bar line
+      const src = barSrc[k], missing = bpb - len;
+      const fix = src && src.col != null && missing > 1e-6 ? { label: 'Fill it with a rest (z' + ABC.lengthText(missing / (4 * src.unit)) + ')', line: src.line, col: src.col, len: 0, insert: 'z' + ABC.lengthText(missing / (4 * src.unit)) + ' ' } : null;
+      warn(src ? src.line : 0, `Bar ${k + 1} lasts ${+len.toFixed(3)} beats but the meter asks for ${bpb}. Check the note lengths in that bar.`, fix);
     });
     const bpm = meta.bpm || 100;
     return {
