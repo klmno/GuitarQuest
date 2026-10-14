@@ -21,7 +21,7 @@
     function drawStrings() {
       strings.innerHTML = '';
       for (const t of TU.targets()) {
-        strings.append(h('button', { class: 'tstring' + (TU.ok[t.string] ? ' ok' : ''), 'data-s': t.string, title: 'Play a reference tone',
+        strings.append(h('button', { class: 'tstring' + (TU.ok[t.string] ? ' ok' : ''), 'data-s': t.string, 'data-sk': 's' + t.string, title: 'Play a reference tone',
           onclick: () => { if (A.ctx) GQ.sound.tone(A.ctx.currentTime + 0.02, t.midi, 1.8); } },
           h('b', null, T.midiName(t.midi)), h('span.small', null, 'string ' + t.string + (TU.ok[t.string] ? ' ✓' : ''))));
       }
@@ -32,9 +32,9 @@
       note, cents, h('div.cmeter', null, h('div.zone', { style: { left: '45%', width: '10%' } }), h('div.mid'), needle), strings, status,
       h('p.small.muted', null, 'Every string must hold within ±5 cents for half a second. Tap a string to hear its reference pitch. Scored lessons need a passed check with this input and tuning.'),
       h('div.row', { style: { justifyContent: 'center' } },
-        h('button.btn', { onclick: () => { TU.reset(); drawStrings(); } }, 'Start again'),
-        fromLevel ? h('button.btn.primary', { onclick: () => UI.go('#/lesson/' + GQ.curriculum.levels[1].id) }, 'Continue to the next level →') : null,
-        backTo ? h('button.btn.primary', { onclick: () => UI.go('#/lesson/' + backTo) }, '← Back to the lesson') : null)));
+        h('button.btn', { 'data-sk': 'again', onclick: () => { TU.reset(); drawStrings(); } }, 'Start again'),
+        fromLevel ? h('button.btn.primary', { 'data-sk': 'back', onclick: () => UI.go('#/lesson/' + GQ.curriculum.levels[1].id) }, 'Continue to the next level →') : null,
+        backTo ? h('button.btn.primary', { 'data-sk': 'back', onclick: () => UI.go('#/lesson/' + backTo) }, '← Back to the lesson') : null)));
     const offS = TU.on('string', () => drawStrings());
     const offP = TU.on('passed', () => {
       status.textContent = 'All six strings are in tune. Scored lessons are unlocked.'; status.className = 'msg good';
@@ -72,9 +72,11 @@
       const set0 = A.settings || {};
       const chk = (name, v, want) => h('li', null, h('span', null, name), h('span', { style: { color: v === undefined ? 'var(--muted)' : v === want ? 'var(--good)' : 'var(--bad)' } }, v === undefined ? 'not reported' : String(v)));
       const mask = h('div.mask'), gateMark = h('div.gate');
-      const gate = h('input', { type: 'range', min: -80, max: -20, value: A.gateDb, oninput: (e) => { A.setGate(+e.target.value); gv.textContent = A.gateDb + ' dBFS'; gateMark.style.left = ((A.gateDb + 60) / 60 * 100) + '%'; } });
+      // the meter covers -80 to 0 dBFS, the same range as the gate slider; always inside the meter
+      const meterPos = (db) => GQ.clamp((db + 80) / 80, 0, 1) * 100;
+      const gate = h('input', { type: 'range', min: -80, max: -20, value: A.gateDb, oninput: (e) => { A.setGate(+e.target.value); gv.textContent = A.gateDb + ' dBFS'; gateMark.style.left = meterPos(A.gateDb) + '%'; } });
       const gv = h('span.mono', null, A.gateDb + ' dBFS');
-      gateMark.style.left = GQ.clamp((A.gateDb + 60) / 60, 0, 1) * 100 + '%';
+      gateMark.style.left = meterPos(A.gateDb) + '%';
       const devSel = h('select', null, ...A.devices.map((x) => h('option', { value: x.deviceId, selected: x.deviceId === A.deviceId }, x.label || 'Unnamed input')));
       const cal = store.device(A.key()).calib;
       const calMsg = h('p.msg', null, cal ? `Calibrated: ${cal.offsetMs} ms ±${cal.spreadMs} ms (${new Date(cal.date).toLocaleDateString()})` : 'Not calibrated for this input yet.');
@@ -92,7 +94,8 @@
           ...[['mix', 'Mix both'], ['left', 'Left / 1'], ['right', 'Right / 2']].map(([v, t]) => h('option', { value: v, selected: (store.device(A.key()).channel || 'mix') === v }, t)))),
         h('h3', null, 'Level and noise gate'),
         h('div.levelmeter', null, mask, gateMark),
-        h('div.row', { style: { marginTop: '.5rem' } }, h('label.inline', null, 'Gate ', gate, gv), h('button.btn.small', { onclick: () => A.measureFloor() }, 'Measure noise floor (2 s)')),
+        h('div.row', { style: { marginTop: '.5rem' } }, h('label.inline', null, 'Gate ', gate, gv), h('button.btn.small', { 'data-sk': 'noise', onclick: () => A.measureFloor() }, 'Measure noise floor (2 s)')),
+        detectBlock(),
         h('h3', null, 'Capture settings (REQ-HW-3)'),
         h('ul.list', null, chk('echoCancellation', set0.echoCancellation, false), chk('noiseSuppression', set0.noiseSuppression, false), chk('autoGainControl', set0.autoGainControl, false),
           h('li', null, h('span', null, 'sample rate'), h('span', null, (set0.sampleRate || A.ctx.sampleRate) + ' Hz')),
@@ -100,7 +103,7 @@
           h('li', null, h('span', null, 'output latency'), h('span', null, (A.outputLatency() * 1000).toFixed(1) + ' ms'))),
         h('h3', null, 'Latency calibration (REQ-DET-4)'),
         h('p.small.muted', null, 'Four count-in clicks, then pick any note on each of 16 clicks. The median offset is subtracted before timing is scored. Redo it when you change input or headphones.'),
-        h('div.row', null, h('button.btn.primary', { onclick: async (e) => {
+        h('div.row', null, h('button.btn.primary', { 'data-sk': 'calibrate', onclick: async (e) => {
           e.target.disabled = true; calMsg.textContent = 'Listen… then play on every click.'; calMsg.className = 'msg info';
           const r = await A.calibrate({ bpm: 90, clicks: 16, onTick: (i, n, count) => { beats.innerHTML = ''; for (let k = 0; k < n; k++) beats.append(h('span', { style: { width: '.8rem', height: '.8rem', borderRadius: '50%', display: 'inline-block', background: k === i ? 'var(--accent)' : k < count ? 'var(--line)' : 'var(--panel2)', border: '1px solid var(--line)' } })); } });
           e.target.disabled = false;
@@ -108,10 +111,38 @@
           else { calMsg.textContent = `Offset ${r.offsetMs} ms, spread ±${r.spreadMs} ms (${r.found}/${r.n}).` + (r.spreadMs > 25 ? ' Wide spread: try again with short, clean picks.' : ''); calMsg.className = 'msg ' + (r.spreadMs > 25 ? 'warn' : 'good'); }
         } }, 'Calibrate'), beats), calMsg,
         h('p.small.muted', null, 'Need the detailed latency breakdown? The Phase 0 input test is in ', h('a', { href: 'phase0/index.html' }, 'phase0/'), '.'));
-      UI.draw = () => { mask.style.width = (100 - GQ.clamp((A.level.peakDb + 60) / 60, 0, 1) * 100) + '%'; };
+      UI.draw = () => { mask.style.width = (100 - meterPos(A.level.peakDb)) + '%'; };
     }
+    // note detection: filters and processing that tell the note just picked from notes still ringing
+    function detectBlock() {
+      const d = A.detect(), D = A.DETECT_DEFAULTS;
+      const rec = (k, v) => (D[k] === v ? ' (recommended)' : '');
+      const sel = (k, opts, conv) => h('select', { onchange: (e) => A.setDetect({ [k]: conv ? conv(e.target.value) : e.target.value }) },
+        ...opts.map(([v, t]) => h('option', { value: v, selected: String(d[k]) === String(v) }, t + rec(k, conv ? conv(v) : v))));
+      const found = A.humFound ? `found ${A.humFound} Hz` : A.measuringFloor ? 'listening…' : 'none found';
+      return h('div', null,
+        h('h3', null, 'Note detection'),
+        h('p.small.muted', null, 'Filters and processing that tell the note you just picked from notes still ringing. The recommended settings scored best on the app’s test recordings: change them only if notes are missed or doubled.'),
+        h('div.grid2', null,
+          h('label.field', null, 'Hum filter (mains hum from the amp, cable or computer)',
+            sel('hum', [['auto', `Automatic: ${found}`], ['50', '50 Hz (Europe, Asia, Africa)'], ['60', '60 Hz (Americas)'], ['0', 'Off']], (v) => (v === 'auto' ? v : +v))),
+          h('label.field', null, 'Spot new notes by',
+            sel('onset', [['flux', 'Spectral change'], ['energy', 'Level jump (older)']])),
+          h('label.field', null, 'Sensitivity to new notes',
+            sel('sens', [['low', 'Low: fewer false notes'], ['normal', 'Normal'], ['high', 'High: soft picking']])),
+          h('label.field', null, 'Notes still ringing',
+            sel('ring', [['normal', 'Remove the last 3 for 2.5 s'], ['strong', 'Remove the last 5 for 4 s'], ['off', 'Don’t remove']])),
+          h('label.field', null, 'Confirm a pitch after',
+            sel('confirm', [['2', 'Two readings (fast)'], ['3', 'Three readings (about 5 ms slower)']], (v) => +v)),
+          h('label.inline', null, h('input', { type: 'checkbox', checked: !!d.pitchLp, onchange: (e) => A.setDetect({ pitchLp: e.target.checked }) }),
+            'Low-pass at 1.5 kHz before pitch detection (may help a very bright or heavily distorted tone; less accurate otherwise)')),
+        h('div.row', null, h('button.btn.small', { onclick: () => A.setDetect(null) }, 'Recommended settings'),
+          h('span.small.muted', null, 'Saved for this input. The hum filter is also used for the noise gate.')));
+    }
+
     drawInput();
     const offState = A.on('state', drawInput);
+    const offDetect = [A.on('detect', drawInput)];
     sections.push(inputCard);
 
     // --- profile ---
@@ -151,7 +182,7 @@
         }
         folderCard.append(h('div.row', null,
           FO.state === 'ask' ? h('button.btn.primary', { onclick: act(FO.allow, told) }, 'Allow access') : null,
-          FO.state === 'ready' ? h('button.btn', { onclick: act(FO.sync, told) }, 'Sync now') : null,
+          FO.state === 'ready' ? h('button.btn', { 'data-sk': 'sync', onclick: act(FO.sync, told) }, 'Sync now') : null,
           h('button.btn', { onclick: act(FO.choose, told) }, FO.state === 'error' ? 'Choose the folder again…' : 'Choose another folder…'),
           h('button.btn.ghost', { onclick: act(FO.forget, () => UI.toast('Stopped saving to the folder. Its files are still there.', 5000)) }, 'Stop using this folder')));
       }
@@ -210,11 +241,38 @@
       }
     }
     drawKeys();
-    const offLearn = CT.on('learned', drawKeys);
+    const offLearn = CT.on('learned', () => { drawKeys(); drawShortcuts(); });
     sections.push(h('section.card', null, h('h2', null, 'Hands-free'),
       h('p.small.muted', null, 'Most USB footswitches send key presses. Press "Learn", then press the pedal.'), keysTable,
       h('div.row', { style: { marginTop: '.6rem' } }, h('label.inline', null, h('input', { type: 'checkbox', checked: s.voice, disabled: !CT.voiceSupported, onchange: (e) => { store.setSetting('voice', e.target.checked); CT.setVoice(e.target.checked); } }),
         'Voice commands: "start", "stop", "again", "next", "slower", "faster", "lock"' + (CT.voiceSupported ? '' : ' (not supported in this browser)')))));
+
+    // --- keyboard shortcuts (js/shortcuts.js) ---
+    const KS = GQ.shortcuts;
+    let skPage = args[0] === 'shortcuts' && KS.PAGES[args[1]] ? args[1] : 'lesson';
+    const skCard = h('section.card#shortcuts'), skTable = h('table.keys'), skMsg = h('p.small.muted');
+    const skSel = h('select', { 'aria-label': 'Page', onchange: (e) => { KS.cancel(); skPage = e.target.value; skMsg.textContent = ''; drawShortcuts(); } },
+      ...Object.entries(KS.PAGES).map(([k, v]) => h('option', { value: k, selected: k === skPage }, v.title)));
+    function drawShortcuts() {
+      skTable.innerHTML = '';
+      const keys = KS.keys(skPage);
+      for (const [a, name] of KS.PAGES[skPage].actions) {
+        const set = h('button.btn.small', { onclick: (e) => { KS.learn(skPage, a); e.target.textContent = 'Press a key… (Esc: cancel)'; } }, 'Set key');
+        skTable.append(h('tr', null, h('td', null, name), h('td', null, keys[a] ? h('kbd', null, KS.keyName(keys[a])) : h('span.muted', null, 'none')),
+          h('td', null, set, ' ', h('button.btn.small.ghost', { disabled: !keys[a], onclick: () => { KS.cancel(); KS.set(skPage, a, ''); drawShortcuts(); } }, 'Clear'))));
+      }
+    }
+    drawShortcuts();
+    const offSk = KS.on('learned', (r) => {
+      skMsg.textContent = !r ? '' : r.refused ? r.refused : r.moved && r.moved.length ? `${KS.keyName(r.code)} was taken from: ${r.moved.join(', ')}.` : '';
+      drawShortcuts(); drawKeys();
+    });
+    skCard.append(h('h2', null, 'Keyboard shortcuts'),
+      h('p.small.muted', null, 'Up to ', String(KS.MAX), ' keys for each page. The key shows in front of the button’s name, like "1.▶ Start". Shortcuts don’t work while you type in a text box. They belong to this profile.'),
+      h('div.row', null, h('label.inline', null, 'Page ', skSel),
+        h('button.btn.small.ghost', { onclick: () => { KS.cancel(); KS.reset(skPage); skMsg.textContent = 'Back to the default keys for this page.'; drawShortcuts(); } }, 'Default keys')),
+      skTable, skMsg);
+    sections.push(skCard);
 
     const upd = h('span.small.muted');
     sections.unshift(h('section.card#about', null,
@@ -222,7 +280,7 @@
       h('p.small.muted', null, 'Released ' + G.GQ_RELEASED + '. The version number changes with every update, so you can tell when a new one has arrived.'),
       h('ul.list', null, ...G.GQ_CHANGES.slice(0, 5).map(([v, d, t]) => h('li', null, h('span', null, t), h('span', null, 'v' + v)))),
       'serviceWorker' in navigator && /^https?:$/.test(location.protocol)
-        ? h('div.row', { style: { marginTop: '.6rem' } }, h('button.btn.small', { onclick: async () => {
+        ? h('div.row', { style: { marginTop: '.6rem' } }, h('button.btn.small', { 'data-sk': 'updates', onclick: async () => {
             upd.textContent = 'Checking…';
             try {
               const reg = await navigator.serviceWorker.getRegistration();
@@ -236,6 +294,7 @@
     main.append(h('div.grid2', null, ...sections));
     if (args[0] === 'input') inputCard.scrollIntoView();
     if (args[0] === 'folder') folderCard.scrollIntoView();
-    return { destroy() { offState(); offLearn(); offFolder.forEach((f) => f()); } };
+    if (args[0] === 'shortcuts') skCard.scrollIntoView();
+    return { destroy() { offState(); offLearn(); offSk(); KS.cancel(); offFolder.forEach((f) => f()); offDetect.forEach((f) => f()); } };
   };
 })(typeof window !== 'undefined' ? window : globalThis);

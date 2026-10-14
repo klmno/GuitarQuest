@@ -81,10 +81,11 @@
     const label0 = track.label || (A.devices.find((d) => d.deviceId === deviceId) || {}).label;
     const dev = store.device(label0 ? 'label:' + label0 : deviceId || set.deviceId || '');
     A.gateDb = dev.gateDb != null ? dev.gateDb : -55;
+    A.humFound = dev.humHz || 0;
     const node = new AudioWorkletNode(ctx, 'guitar-input', {
       numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
       channelCountMode: 'max', channelInterpretation: 'discrete',
-      processorOptions: { gateDb: A.gateDb, confMin: A.CONF_MIN },
+      processorOptions: { gateDb: A.gateDb, confMin: A.CONF_MIN, opts: A.workletOpts(dev.detect) },
     });
     const source = ctx.createMediaStreamSource(stream);
     source.connect(node);
@@ -127,6 +128,26 @@
   }
   A.state = () => (!A.ctx ? 'closed' : A.ctx.state);
   A.resume = () => (A.ctx && A.ctx.state === 'suspended' ? A.ctx.resume() : Promise.resolve());
+
+  // ---- note detection options (Settings > Guitar input > Note detection; see js/worklet.js) ----
+  // Defaults chosen with tests/detect-bench.js: spectral-flux onsets, hum filter found automatically,
+  // normal ringing-note removal, no pitch low-pass (it cost accuracy), two readings to confirm a note.
+  A.DETECT_DEFAULTS = { hum: 'auto', onset: 'flux', sens: 'normal', ring: 'normal', pitchLp: false, confirm: 2 };
+  A.humFound = 0;   // mains hum found by the last noise-floor measurement (0, 50 or 60 Hz)
+  A.detect = () => Object.assign({}, A.DETECT_DEFAULTS, (A.deviceId ? store.device(A.key()).detect : null) || {});
+  A.humHz = (d) => { d = d || A.detect(); return d.hum === 'auto' ? A.humFound : +d.hum || 0; };
+  A.workletOpts = function (saved) {
+    const d = Object.assign({}, A.DETECT_DEFAULTS, saved || {});
+    return { hum: A.humHz(d), onset: d.onset, sens: d.sens, ring: d.ring, pitchLp: !!d.pitchLp, confirm: +d.confirm || 2 };
+  };
+  A.setDetect = function (patch) {
+    const d = patch ? Object.assign(A.detect(), patch) : Object.assign({}, A.DETECT_DEFAULTS);
+    if (A.deviceId) store.setDevice(A.key(), { detect: d });
+    if (A.node) A.node.port.postMessage({ type: 'setOptions', opts: A.workletOpts(d) });
+    A.emit('detect', d);
+    // a different hum filter changes the noise the gate should sit above
+    if (patch && 'hum' in patch && A.lastFloor) A.setGate(gateFor(A.lastFloor, A.humHz(d)));
+  };
 
   // ---- gate / floor / channel ----
   A.setGate = function (db) {
@@ -196,6 +217,12 @@
   A.calibration = () => (A.deviceId ? store.device(A.key()).calib || null : null);
   A.offsetSec = () => { const c = A.calibration(); return c ? c.offsetMs / 1000 : A.outputLatency() + (Number.isFinite(A.inputLatencyMs) ? A.inputLatencyMs / 1000 : 0.01); };
 
+  // gate above the noise as the detector sees it (after the hum filter, when there is one)
+  function gateFor(m, hz) {
+    const f = hz === 50 && m.with50 ? m.with50 : hz === 60 && m.with60 ? m.with60 : m;
+    return GQ.clamp(Math.max(f.rmsDb + 12, f.peakDb + 3), -80, -35);
+  }
+
   // ---- worklet messages ----
   function onMsg(m) {
     switch (m.type) {
@@ -209,10 +236,15 @@
       }
       case 'floor': {
         A.measuringFloor = false;
-        const gate = GQ.clamp(Math.max(m.rmsDb + 12, m.peakDb + 3), -80, -35);
+        A.humFound = m.humHz || 0;
+        A.lastFloor = m;
+        const hz = A.humHz();
+        if (A.node && A.detect().hum === 'auto') A.node.port.postMessage({ type: 'setOptions', opts: { hum: hz } });
+        const gate = gateFor(m, hz);
         A.setGate(gate);
-        if (A.deviceId) store.setDevice(A.key(), { floorAt: Date.now(), floorDb: m.rmsDb });
+        if (A.deviceId) store.setDevice(A.key(), { floorAt: Date.now(), floorDb: m.rmsDb, humHz: A.humFound });
         A.emit('floor', { ...m, gate });
+        A.emit('detect', A.detect());
         break;
       }
       default: A.emit(m.type, m); // onset, note, chroma, unclear

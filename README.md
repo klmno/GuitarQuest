@@ -28,6 +28,7 @@ The version is in `js/version.js` and shows in Settings > About and in the foote
 | Direct input, device picker, microphone refusal, device-loss pause, capture settings check | `js/audio.js`, Settings | REQ-HW-1..5 |
 | Monitoring with clean / warm / crunch tone | `js/audio.js` | REQ-HW-7 |
 | YIN pitch detection in an AudioWorklet, onsets, noise gate, level and clipping | `js/worklet.js` | REQ-DET-1, 2, 7 |
+| Note detection options (Settings > Guitar input): hum filter (50/60 Hz notches, found automatically during the noise-floor measurement, and used for the gate), new notes from SuperFlux spectral flux (Böck & Widmer, DAFx-13) or the older level jump, sensitivity, ringing-note removal, an optional pitch low-pass, readings to confirm. Defaults measured with `node tests/detect-bench.js` | `js/worklet.js`, `js/audio.js` | REQ-DET-2, 6 |
 | Chord recognition: 12-bin chroma over the 150 ms after an onset, matched against harmonic chord templates, with a confidence value | `js/worklet.js`, `js/chords.js` | REQ-DET-5 |
 | "I didn't hear that clearly" instead of a wrong mark, unclear notes not scored, more than 20% unclear reported as an input problem | `js/lesson.js`, `js/scoring.js` | REQ-DET-6, REQ-SC-2 |
 | Tuner with reference tones and A4 setting, tuning check before scoring, drift warning mid-lesson | `js/tuner.js`, `js/lesson.js` | REQ-DET-9 |
@@ -38,6 +39,7 @@ The version is in `js/version.js` and shows in Settings > About and in the foote
 | Creator: write songs in ABC with fields, note-length buttons, a clickable fretboard or notes played on the guitar; live tab, notation, Listen and error checking; saved to this browser and listed under Songs > My songs with Play, Edit, Export and Delete; Import .abc files (several tunes per file) | `js/abc.js`, `js/custom.js`, `js/ui-creator.js`, `js/ui-help.js` | |
 | Songs folder: My songs kept as one .abc file per song in a folder the user picks (File System Access API, Chrome and Edge on a computer). Saving, renaming and deleting update the files; files added or edited in the folder come into My songs (the newer side wins); choosing the same folder after cleared browser data brings the songs back. The folder handle is kept in IndexedDB, and after a reload the browser may ask for access again. Download all my songs as one .abc file works in every browser | `js/folder.js`, Settings | |
 | Practice room: 72 named exercises in 7 categories (warm-ups such as 1-2-3-4 and the spider, the five pentatonic boxes, blues and major pentatonic, scales and modes, arpeggios and triads, 12-bar shuffles, famous progressions, one-minute changes, Travis picking, bends and vibrato, speed ladders), with search, Listen, note steps and scoring | `js/practice.js`, `js/ui-practice.js` | |
+| Creator editor with line numbers: lines with an error or warning are marked in red or yellow, the cursor line is highlighted, long lines scroll sideways so the numbers stay aligned, and clicking a problem scrolls to its line | `js/ui-creator.js` | |
 | Note steps: play any lesson or song with 10%, 20% ... 100% of its notes (strongest beats first, each step adding to the last); the score is capped at the step, and a step is cleared at 80% | `js/steps.js`, `js/ui-lesson.js` | |
 | Listen: hear any lesson or song first with a synthesised electric guitar (pickup, amp, cabinet and room; clean or crunch), with the playhead moving on the highway, tab and notation | `js/preview.js` | |
 | Notes picked while others still ring: the ringing notes are cancelled with comb filters before the new pitch is measured, and a new strum's chord uses only the energy it added | `js/worklet.js` | REQ-DET-1, 5, 6 |
@@ -45,6 +47,7 @@ The version is in `js/version.js` and shows in Settings > About and in the foote
 | Left-handed mode, flipped fretboard and tab (low E on top), display size, alternative tunings and capo | Settings | REQ-UI-7, 8 |
 | Scoring out of 100 per note, stars at 60 / 80 / 95, progress, weak spots, chord-change speed, streak; profiles with their own progress and settings, a switcher in the top bar, "Who is playing?" at start-up, export and import | `js/scoring.js`, `js/store.js`, Progress | REQ-SC-1..4 |
 | Footswitch keys (learnable), voice commands, auto-advance | `js/controls.js` | REQ-PF-3 |
+| Keyboard shortcuts: up to 8 per page (lesson, learn, songs, practice, creator, tuner, settings, profiles, help), keys 1 to 8 by default, chosen per profile in Settings; the key is shown in front of each button's name | `js/shortcuts.js`, Settings | |
 | PWA: manifest, service worker, icons | `manifest.webmanifest`, `sw.js` | REQ-PF-1 |
 | Phase 0 input test page | `phase0/` | Build order, Phase 0 |
 
@@ -64,8 +67,9 @@ E4 F#3 Bb3                          pitches, placed on the neck in the level's p
 ```
 node tests/run.js                        # detector accuracy, notes and chords over ringing strings, every level and practice exercise parses and fits its bars
 node tests/make-wav.js /tmp/guitar.wav   # synthesized test recording
+node tests/detect-bench.js               # compares the note-detection options (about a minute)
 npm i --no-save playwright               # only needed for the browser test
-python3 -m http.server 8777 & node tests/browser.test.js && node tests/progress.test.js && node tests/profiles.test.js && node tests/preview.test.js && node tests/steps-ui.test.js && node tests/creator.test.js && node tests/practice-ui.test.js && node tests/folder-ui.test.js && node tests/tab-ui.test.js
+python3 -m http.server 8777 & node tests/browser.test.js && node tests/progress.test.js && node tests/profiles.test.js && node tests/preview.test.js && node tests/steps-ui.test.js && node tests/creator.test.js && node tests/practice-ui.test.js && node tests/folder-ui.test.js && node tests/tab-ui.test.js && node tests/shortcuts-ui.test.js && node tests/detect-ui.test.js && node tests/editor-lines.test.js
 ```
 
 The detector tests use synthesized plucked strings, clean and overdriven:

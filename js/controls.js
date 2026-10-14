@@ -18,10 +18,14 @@
         for (const k of Object.keys(keys)) keys[k] = keys[k].filter((c) => c !== e.code); // one key, one action
         keys[learning] = [e.code];
         store.setSetting('keys', keys);
+        // ... also against the lesson page's keyboard shortcuts (js/shortcuts.js)
+        const KS = GQ.shortcuts, code = /^Numpad\d$/.test(e.code) ? 'Digit' + e.code.slice(6) : e.code;
+        if (KS) for (const [a, c] of Object.entries(KS.keys('lesson'))) if (c === code) KS.set('lesson', a, '');
       }
       const a = learning; learning = null; CT.emit('learned', { action: a, code: e.code });
       return;
     }
+    if (GQ.shortcuts && GQ.shortcuts.keydown(e)) return; // the page's own shortcuts come first
     if (/INPUT|SELECT|TEXTAREA/.test(tag) && e.code !== 'PageDown' && e.code !== 'PageUp') return;
     const keys = store.settings().keys;
     for (const [action, codes] of Object.entries(keys)) {

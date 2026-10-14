@@ -12,6 +12,7 @@
     metronome: true, metronomeVol: 0.6, backing: true, backingVol: 0.5, countIn: true,
     monitor: false, monitorVol: 0.7, ampTone: 'clean', previewTone: 'clean',
     autoAdvance: false, voice: false,
+    shortcuts: {},                   // keyboard shortcuts chosen in Settings: {page: {action: key code}} (js/shortcuts.js)
     keys: { toggle: ['Space'], next: ['PageDown', 'ArrowRight'], again: ['PageUp', 'ArrowLeft'], slower: ['ArrowDown'], faster: ['ArrowUp'], lock: ['KeyL'] },
     practiceLock: false, positionLock: false,
     deviceId: null, deviceLabel: null,

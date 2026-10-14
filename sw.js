@@ -19,6 +19,7 @@ const ASSETS = [
   'js/audio.js',
   'js/chords.js',
   'js/controls.js',
+  'js/shortcuts.js',
   'js/curriculum.js',
   'js/practice.js',
   'js/lesson.js',

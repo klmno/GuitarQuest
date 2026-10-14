@@ -2,9 +2,12 @@
  * also names the offline cache in sw.js, so installed copies pick up the new files. */
 (function (G) {
   'use strict';
-  G.GQ_VERSION = '1.12.0';
-  G.GQ_RELEASED = '2026-10-01';
+  G.GQ_VERSION = '1.15.0';
+  G.GQ_RELEASED = '2026-10-14';
   G.GQ_CHANGES = [
+    ['1.15.0', '2026-10-14', 'Creator: line numbers next to the text, with the lines that have an error (red) or a warning (yellow) marked, and the cursor line highlighted. Clicking a problem scrolls to its line. Also fixes the Learn page being wider than a phone screen.'],
+    ['1.14.0', '2026-10-02', 'Better note detection while other notes ring: new notes are spotted from their own harmonics (spectral flux), mains hum is found and filtered out, and the gate follows. Settings > Guitar input > Note detection has the options.'],
+    ['1.13.0', '2026-10-02', 'Keyboard shortcuts on every page: up to 8 keys each (1 to 8 by default), shown in front of the button names like "1.▶ Start". Choose your own keys in Settings > Keyboard shortcuts.'],
     ['1.12.0', '2026-10-01', 'Progress while you play: next to the note steps, a bar and a count of the notes played right so far (and how many were missed).'],
     ['1.11.0', '2026-10-01', 'My songs can be written as guitar tab: paste a plain-text tab into the Creator (or import a .tab file) and play it with its exact strings, frets, hammer-ons, slides, bends and palm mutes. Saved and exported as .tab.'],
     ['1.10.0', '2026-10-01', 'Settings > Instrument: flip the fretboard and tab so the low E string is on top, as you see the neck when you look down.'],

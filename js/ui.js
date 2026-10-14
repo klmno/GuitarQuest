@@ -116,6 +116,7 @@
     main.append(UI.alerts);
     const screen = UI.screens[name] || UI.screens.learn;
     UI.current = screen(main, parts.slice(1)) || {};
+    GQ.shortcuts.setPage(UI.screens[name] ? name : 'learn');
     for (const a of UI.nav.querySelectorAll('a')) a.classList.toggle('on', a.dataset.k === name || (name === 'lesson' && a.dataset.k === (/song-custom-/.test(location.hash) ? 'songs' : /\/px-/.test(location.hash) ? 'practice' : 'learn')) || (name === 'help' && a.dataset.k === 'creator'));
     UI.pchip.classList.toggle('on', name === 'profiles');
     window.scrollTo(0, 0);
@@ -138,7 +139,7 @@
     const s = store.settings();
     const seg = h('div.seg', { role: 'group', 'aria-label': 'Mode' });
     for (const [k, t] of [['beginner', 'Beginner'], ['intermediate', 'Intermediate'], ['advanced', 'Advanced']]) {
-      seg.append(h('button', { class: s.mode === k ? 'on' : '', onclick: () => {
+      seg.append(h('button', { class: s.mode === k ? 'on' : '', 'data-sk': k, onclick: () => {
         store.setSetting('mode', k);
         for (const b of seg.children) b.classList.toggle('on', b === seg.querySelector(`[data-k="${k}"]`));
         if (onChange) onChange(k);
@@ -158,13 +159,13 @@
     if (!A.ctx) main.append(h('div', { style: { marginBottom: '1rem' } }, UI.connectCard(() => route())));
     main.append(h('div.hero', null,
       h('div.row', null, UI.avatar(p.name, p.color, true), h('div', null, h('h2', null, 'Hi ' + p.name),
-        h('div.muted.small', null, `${CUR.levels.length} levels in ${CUR.units.length} units · `, h('a', { href: '#/profiles' }, store.profiles().length > 1 ? 'switch player' : 'add a player')))),
+        h('div.muted.small', null, `${CUR.levels.length} levels in ${CUR.units.length} units · `, h('a', { href: '#/profiles', 'data-sk': 'players' }, store.profiles().length > 1 ? 'switch player' : 'add a player')))),
       h('div.stats', null,
         h('div.stat', null, h('b', null, passed), h('span', null, 'levels passed')),
         h('div.stat', null, h('b', null, starsTotal), h('span', null, 'stars')),
         h('div.stat', null, h('b', null, store.streak()), h('span', null, 'day streak')),
         h('div.stat', null, h('b', null, Math.round(p.minutes)), h('span', null, 'minutes'))),
-      h('div.row', null, UI.modeSeg(), h('button.btn.primary.big', { onclick: () => UI.go('#/lesson/' + nextId) }, '▶ ' + (next ? next.title : 'Start')))));
+      h('div.row', null, UI.modeSeg(), h('button.btn.primary.big', { 'data-sk': 'start', onclick: () => UI.go('#/lesson/' + nextId) }, '▶ ' + (next ? next.title : 'Start')))));
     for (const u of CUR.units) {
       const done = u.levels.filter((l) => p.levels[l.id] && p.levels[l.id].stars > 0).length;
       const card = h('section.card.unit', null,
@@ -194,7 +195,7 @@
     const p = store.profile();
     let cat = args[0] === 'mine' ? 'mine' : 'all';
     const cats = [['all', 'All'], ['mine', 'My songs'], ['folk', 'Folk'], ['classical', 'Classical'], ['blues', 'Blues'], ['rock', 'Rock'], ['original', 'Original']];
-    const seg = h('div.seg', null, ...cats.map(([c, t]) => h('button', { class: c === cat ? 'on' : '', 'data-cat': c, onclick: (e) => { cat = c; for (const b of seg.children) b.classList.toggle('on', b === e.target); draw(); } }, t)));
+    const seg = h('div.seg', null, ...cats.map(([c, t]) => h('button', { class: c === cat ? 'on' : '', 'data-cat': c, 'data-sk': c, onclick: (e) => { cat = c; for (const b of seg.children) b.classList.toggle('on', b === e.target); draw(); } }, t)));
     const grid = h('div.songs');
     const fileIn = h('input', { type: 'file', accept: '.abc,.tab,.txt,text/plain,text/vnd.abc', multiple: true, hidden: true, onchange: async (e) => {
       let saved = 0; const failed = [];
@@ -206,8 +207,8 @@
     main.append(
       h('div.hero', null,
         h('div', null, h('h2', null, 'Song library'), h('p.muted.small', null, 'Traditional, public-domain and original pieces, plus your own songs in My songs. The origin of each one is on its card.')),
-        h('div.row', null, h('button.btn.primary', { onclick: () => UI.go('#/creator') }, '+ New song'), h('button.btn', { onclick: () => fileIn.click(), title: 'Add songs from .abc or tab (.tab, .txt) files' }, 'Import .abc or tab'), fileIn,
-          h('a.btn.ghost', { href: '#/help' }, 'ABC help'))),
+        h('div.row', null, h('button.btn.primary', { onclick: () => UI.go('#/creator'), 'data-sk': 'new' }, '+ New song'), h('button.btn', { onclick: () => fileIn.click(), 'data-sk': 'import', title: 'Add songs from .abc or tab (.tab, .txt) files' }, 'Import .abc or tab'), fileIn,
+          h('a.btn.ghost', { href: '#/help', 'data-sk': 'help' }, 'ABC help'))),
       h('div', { style: { marginBottom: '1rem' } }, seg), grid);
 
     const listenBtn = (key, levelFn) => h('button.btn.small.ghost.listen', { 'data-song': key, onclick: () => { const lv = levelFn(); if (GQ.preview.playing(lv)) GQ.preview.stop(); else GQ.preview.play(lv); } }, '♪ Listen');
@@ -312,7 +313,7 @@
   });
   A.on('resumed', () => UI.toast('Welcome back. Latency can change after the app was in the background: redo the calibration in Settings if timing feels off.', 5000));
   A.on('floor-start', () => UI.toast('Measuring noise for 2 seconds: keep the strings quiet.', 2200));
-  A.on('floor', (m) => UI.toast(`Noise gate set to ${Math.round(m.gate)} dBFS.`, 2200));
+  A.on('floor', (m) => UI.toast(`Noise gate set to ${Math.round(m.gate)} dBFS.` + (m.humHz ? ` Mains hum found at ${m.humHz} Hz: filtered out.` : ''), m.humHz ? 4000 : 2200));
   A.on('state', () => { if (A.ctx) UI.alerts.innerHTML = ''; });
   GQ.controls.on('action', (a) => { if (UI.current && UI.current.onAction) UI.current.onAction(a); });
 

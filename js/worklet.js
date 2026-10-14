@@ -17,6 +17,18 @@
  *   - notes still ringing when a new note is picked are cancelled with comb filters tuned to
  *     their periods before the new pitch is measured, and the chroma of a new strum uses only
  *     the energy that the strum added (positive spectral difference)
+ *
+ * Input processing options (Settings > Guitar input > Note detection; setOptions message):
+ *   hum      0 | 50 | 60    notch filters at the mains frequency and its first harmonics
+ *   onset    'flux'         new notes from the SuperFlux onset function (Böck & Widmer, DAFx-13): log
+ *                           quarter-tone spectrum, positive change against a maximum-filtered frame two
+ *                           hops back, online peak picking. Reacts to the new note's own partials,
+ *                           so it still finds a soft note picked while louder ones ring.
+ *            'energy'       the jump in first-difference energy (the original detector)
+ *   sens     'low' | 'normal' | 'high'      onset threshold
+ *   ring     'off' | 'normal' | 'strong'    how many ringing notes are cancelled, and for how long
+ *   pitchLp  true | false   1.5 kHz low-pass before YIN (fewer octave errors on bright or driven tone)
+ *   confirm  2 | 3          readings that must agree before a note is reported
  */
 function guitarQuestWorklet() {
   'use strict';
@@ -36,9 +48,12 @@ function guitarQuestWorklet() {
     const a0 = 1 + al;
     let b0, b1, b2;
     if (type === 'lp') { b0 = (1 - cw) / 2; b1 = 1 - cw; b2 = (1 - cw) / 2; }
+    else if (type === 'notch') { b0 = 1; b1 = -2 * cw; b2 = 1; }
     else { b0 = (1 + cw) / 2; b1 = -(1 + cw); b2 = (1 + cw) / 2; }
     return { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: -2 * cw / a0, a2: (1 - al) / a0 };
   }
+  const FLUX_DELTA = { low: 2, normal: 1.2, high: 0.8 };   // onset threshold on the SuperFlux function (calibrated by tests/detect-bench.js)
+  const DEFAULT_OPTS = { hum: 0, onset: 'flux', sens: 'normal', ring: 'normal', pitchLp: false, confirm: 2 };
   const toDb = (lin) => (lin > 1e-9 ? 20 * Math.log10(lin) : -180);
   const toMidi = (f) => 69 + 12 * Math.log2(f / 440);
 
@@ -122,20 +137,73 @@ function guitarQuestWorklet() {
       this.recent = [];                 // recent stable notes {period (decimated samples), frame}
       this.cancel = [];                 // periods to cancel after the latest onset
       this.cancelAt = -1e12; this.cancelFor = Math.round(2.5 * this.sr);
-      this.MAXC = 3;
-      this.ext = new Float32Array(this.frameLen + this.MAXC * (this.tauMax + 3));
+      this.MAXC = 3; this.combGain = 0.98; this.preSub = 0.7;
+      this.ext = new Float32Array(this.frameLen + 5 * (this.tauMax + 3));
       this.ext2 = new Float32Array(this.ext.length);
       this.frameC = new Float32Array(this.frameLen);
       this.preMag = new Float32Array(this.fftN / 2); this.hasPre = false;
 
+      // low-passed copy of the decimated signal for pitch detection (pitchLp)
+      this.ringP = new Float32Array(this.ringSize);
+      this.agree = 0;
+      // recent block energies (first difference), to place a spectral-flux onset on the attack
+      this.blockE = new Float32Array(16); this.blockF = new Float64Array(16); this.blockPos = 0;
+      // spectral flux: 1024-point frames (~43 ms) every hop, quarter-tone filterbank 60 Hz .. 5 kHz
+      const FN = (this.fluxN = 1024);
+      this.fre = new Float64Array(FN); this.fim = new Float64Array(FN);
+      this.fwin = new Float32Array(FN); for (let i = 0; i < FN; i++) this.fwin[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (FN - 1));
+      this.frev = new Uint16Array(FN);
+      for (let i = 0, bits = Math.log2(FN); i < FN; i++) { let r = 0; for (let b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b); this.frev[i] = r; }
+      this.fcos = new Float64Array(FN / 2); this.fsin = new Float64Array(FN / 2);
+      for (let k = 0; k < FN / 2; k++) { this.fcos[k] = Math.cos(-2 * Math.PI * k / FN); this.fsin[k] = Math.sin(-2 * Math.PI * k / FN); }
+      const binHz = this.srd / FN, centres = [];
+      for (let f = 60; f <= Math.min(5000, 0.45 * this.srd); f *= Math.pow(2, 1 / 24)) {
+        const c = Math.round(f / binHz);
+        if (!centres.length || c > centres[centres.length - 1]) centres.push(c);
+      }
+      this.bands = [];   // triangular filters, not normalised (as in the paper): [{k0, w: Float32Array}]
+      for (let m = 1; m < centres.length - 1; m++) {
+        const lo = centres[m - 1], c = centres[m], hi = centres[m + 1], w = new Float32Array(hi - lo + 1);
+        for (let k = lo; k <= hi; k++) w[k - lo] = k <= c ? (k - lo) / Math.max(1, c - lo) : (hi - k) / Math.max(1, hi - c);
+        this.bands.push({ k0: lo, w });
+      }
+      this.fluxMu = 2;                                   // compare with the frame two hops back
+      this.fluxFrames = [0, 1, 2].map(() => new Float32Array(this.bands.length)); this.fluxCount = 0;
+      this.sfHist = new Float32Array(19); this.sfPos = 0; this.sfFill = 0;   // ~100 ms of onset function
+      this.fluxPreMax = 6;                               // ~30 ms: the peak must be the largest so far
+      this.mags1k = new Float32Array(FN / 2);
+      this.setOptions(Object.assign({}, DEFAULT_OPTS, o.opts || {}));
+
       this.port.onmessage = (e) => this.onMsg(e.data);
+    }
+
+    setOptions(op) {
+      const o = (this.opt = Object.assign({}, this.opt || DEFAULT_OPTS, op || {}));
+      const hz = +o.hum || 0;
+      this.notches = hz ? [1, 2, 3, 4].map((k) => new Biquad(rbj('notch', hz * k, this.sr, 18))).filter((b, k) => hz * (k + 1) < 0.45 * this.sr) : [];
+      this.plp = o.pitchLp ? new Biquad(rbj('lp', 1500, this.srd, 0.707)) : null;
+      const R = { off: [0, 0, 0.98, 0], normal: [3, 2.5, 0.98, 0.7], strong: [5, 4, 0.99, 0.85] }[o.ring] || [3, 2.5, 0.98, 0.7];
+      this.MAXC = R[0]; this.cancelFor = Math.round(R[1] * this.sr); this.combGain = R[2]; this.preSub = R[3];
+      this.confirmN = +o.confirm === 3 ? 3 : 2;
+      this.fluxDelta = { low: FLUX_DELTA.low, normal: FLUX_DELTA.normal, high: FLUX_DELTA.high }[o.sens] || FLUX_DELTA.normal;
+      this.energyK = { low: 6, normal: 4, high: 2.8 }[o.sens] || 4;
+      if (o.fluxDelta) this.fluxDelta = o.fluxDelta;   // for tests/detect-bench.js
     }
 
     onMsg(m) {
       if (m.type === 'setGate') { this.gateDb = m.db; this.gateLin = Math.pow(10, m.db / 20); }
       else if (m.type === 'setChannel') this.channelMode = m.mode;
       else if (m.type === 'setConfMin') this.confMin = m.value;
-      else if (m.type === 'measureFloor') this.floorMeasure = { left: Math.round((m.seconds || 2) * this.sr), sq: 0, n: 0, peak: 0 };
+      else if (m.type === 'setOptions') this.setOptions(m.opts);
+      else if (m.type === 'measureFloor') {
+        // Goertzel filters at 50/100/150 and 60/120/180 Hz find mains hum in the quiet signal
+        const fs = [50, 100, 150, 60, 120, 180];
+        const chain = (hz) => [1, 2, 3, 4].filter((k) => hz * k < 0.45 * this.sr).map((k) => new Biquad(rbj('notch', hz * k, this.sr, 18)));
+        this.floorMeasure = { left: Math.round((m.seconds || 2) * this.sr), sq: 0, n: 0, peak: 0,
+          coef: fs.map((f) => 2 * Math.cos(2 * Math.PI * f / this.sr)), s1: new Float64Array(6), s2: new Float64Array(6),
+          // the noise as it would be with each hum filter, so the gate can be set for the filtered signal
+          f50: chain(50), f60: chain(60), sq50: 0, pk50: 0, sq60: 0, pk60: 0 };
+      }
     }
 
     process(inputs) {
@@ -146,7 +214,7 @@ function guitarQuestWorklet() {
       const mode = this.channelMode;
       const blockStart = currentFrame;
 
-      let peak = 0, sq = 0, clip = 0, dsq = 0;
+      let peak = 0, sq = 0, clip = 0, dsq = 0, sqF = 0;   // sq: the input as it is (meter); sqF: after the hum filter (gate)
       let prev = this.prevX;
       for (let i = 0; i < n; i++) {
         let x;
@@ -157,6 +225,18 @@ function guitarQuestWorklet() {
         if (ax > peak) peak = ax;
         if (ax >= 0.999) clip++;
         sq += x * x;
+        const fmz = this.floorMeasure;
+        if (fmz) {
+          for (let g = 0; g < 6; g++) { const v = x + fmz.coef[g] * fmz.s1[g] - fmz.s2[g]; fmz.s2[g] = fmz.s1[g]; fmz.s1[g] = v; }
+          let a = x, b = x;
+          for (const f of fmz.f50) a = f.run(a);
+          for (const f of fmz.f60) b = f.run(b);
+          fmz.sq50 += a * a; fmz.sq60 += b * b;
+          if (Math.abs(a) > fmz.pk50) fmz.pk50 = Math.abs(a);
+          if (Math.abs(b) > fmz.pk60) fmz.pk60 = Math.abs(b);
+        }
+        for (let k = 0; k < this.notches.length; k++) x = this.notches[k].run(x);
+        sqF += x * x;
 
         const h = this.hp.run(x);
         const dx = h - prev; prev = h; dsq += dx * dx;
@@ -165,6 +245,7 @@ function guitarQuestWorklet() {
         if (++this.decPhase >= this.dec) {
           this.decPhase = 0;
           this.ring[this.ringPos] = y;
+          this.ringP[this.ringPos] = this.plp ? this.plp.run(y) : y;
           if (this.chromaPos >= 0) {
             this.chromaBuf[this.chromaPos++] = y;
             if (this.chromaPos >= this.chromaN) this.finishChroma();
@@ -174,6 +255,7 @@ function guitarQuestWorklet() {
           if (++this.sinceHop >= this.hopDec) {
             this.sinceHop = 0;
             // frame index (input rate) of the newest sample in the analysis window
+            if (this.opt.onset === 'flux') this.fluxHop(blockStart + i + 1);
             this.analyse(blockStart + i + 1);
           }
         }
@@ -183,7 +265,7 @@ function guitarQuestWorklet() {
       // level accumulation
       if (peak > this.lvPeak) this.lvPeak = peak;
       this.lvSq += sq; this.lvN += n; this.lvClip += clip;
-      const blockRms = Math.sqrt(sq / n);
+      const blockRms = Math.sqrt(sqF / n);
       this.recentRms = blockRms;
       // envelope after the last onset: peak in the first 60 ms, mean in 120-150 ms
       const since = blockStart - this.lastOnsetFrame;
@@ -196,30 +278,24 @@ function guitarQuestWorklet() {
         fm.sq += sq; fm.n += n; if (peak > fm.peak) fm.peak = peak; fm.left -= n;
         if (fm.left <= 0) {
           const rmsDb = toDb(Math.sqrt(fm.sq / fm.n));
-          this.port.postMessage({ type: 'floor', rmsDb, peakDb: toDb(fm.peak) });
+          // hum: the power at the mains frequencies against all the noise
+          const pw = fm.s1.map((v, g) => Math.max(0, v * v + fm.s2[g] * fm.s2[g] - fm.coef[g] * v * fm.s2[g]) * 2 / (fm.n * fm.n));
+          const p50 = pw[0] + pw[1] + pw[2], p60 = pw[3] + pw[4] + pw[5], all = fm.sq / fm.n;
+          const humHz = Math.max(p50, p60) > 0.2 * all && Math.max(p50, p60) > 1e-12 ? (p50 > p60 ? 50 : 60) : 0;
+          this.port.postMessage({ type: 'floor', rmsDb, peakDb: toDb(fm.peak), humHz, humShare: all > 0 ? Math.max(p50, p60) / all : 0,
+            with50: { rmsDb: toDb(Math.sqrt(fm.sq50 / fm.n)), peakDb: toDb(fm.pk50) }, with60: { rmsDb: toDb(Math.sqrt(fm.sq60 / fm.n)), peakDb: toDb(fm.pk60) } });
           this.floorMeasure = null;
         }
       }
 
       // onset detection on first-difference energy
       const e = dsq / n;
+      this.blockE[this.blockPos] = e; this.blockF[this.blockPos] = blockStart; this.blockPos = (this.blockPos + 1) & 15;
       let mean = 0;
       for (let k = 0; k < this.histFill; k++) mean += this.hist[k];
       mean = this.histFill ? mean / this.histFill : 0;
-      if (this.histFill >= 4 && blockRms > this.gateLin && e > 4 * mean + 1e-10 &&
-          blockStart - this.lastOnsetFrame > this.refractory) {
-        this.lastOnsetFrame = blockStart;
-        this.onsetFrame = blockStart;
-        this.awaiting = true;
-        this.chromaPos = 0; this.chromaOnset = blockStart;
-        this.recent = this.recent.filter((r) => blockStart - r.frame < 3 * this.sr);
-        this.cancel = this.recent.slice(-this.MAXC).map((r) => r.period).filter((P) => this.stillRinging(P));
-        this.cancelAt = blockStart;
-        this.capturePre();
-        this.envEarly = blockRms; this.envLate = 0; this.envLateN = 0;
-        this.prevEst = null;
-        this.port.postMessage({ type: 'onset', frame: blockStart, time: blockStart / this.sr, rmsDb: toDb(blockRms) });
-      }
+      if (this.opt.onset !== 'flux' && this.histFill >= 4 && blockRms > this.gateLin && e > this.energyK * mean + 1e-10 &&
+          blockStart - this.lastOnsetFrame > this.refractory) this.fireOnset(blockStart, blockRms, 0);
       this.hist[this.histPos] = e; this.histPos = (this.histPos + 1) % this.hist.length;
       if (this.histFill < this.hist.length) this.histFill++;
 
@@ -244,11 +320,86 @@ function guitarQuestWorklet() {
       return true;
     }
 
+    // a new note starts at `frame`; `late` = decimated samples since then (the flux onset is found a little after the attack)
+    fireOnset(frame, rms, late) {
+      this.lastOnsetFrame = frame;
+      this.onsetFrame = frame;
+      this.awaiting = true;
+      this.chromaPos = 0; this.chromaOnset = frame;
+      this.recent = this.recent.filter((r) => frame - r.frame < 3 * this.sr);
+      this.cancel = this.MAXC ? this.recent.slice(-this.MAXC).map((r) => r.period).filter((P) => this.stillRinging(P, late)) : [];
+      this.cancelAt = frame;
+      this.capturePre(late);
+      this.envEarly = rms; this.envLate = 0; this.envLateN = 0;
+      this.prevEst = null; this.agree = 0;
+      this.port.postMessage({ type: 'onset', frame, time: frame / this.sr, rmsDb: toDb(rms) });
+    }
+
+    // SuperFlux onset function for the newest frame, with online peak picking
+    fluxHop(frameNow) {
+      const N = this.fluxN, mask = this.ringSize - 1;
+      if (this.decWritten < N) return;
+      const re = this.fre, im = this.fim, rev = this.frev, w = this.fwin;
+      let p = (this.ringPos - N) & mask;
+      for (let i = 0; i < N; i++) { re[rev[i]] = this.ring[p] * w[i]; im[rev[i]] = 0; p = (p + 1) & mask; }
+      for (let size = 2; size <= N; size <<= 1) {
+        const half = size >> 1, stride = N / size;
+        for (let start = 0; start < N; start += size) {
+          for (let k = 0; k < half; k++) {
+            const wr = this.fcos[k * stride], wi = this.fsin[k * stride], i = start + k, j = i + half;
+            const tr = wr * re[j] - wi * im[j], ti = wr * im[j] + wi * re[j];
+            re[j] = re[i] - tr; im[j] = im[i] - ti; re[i] += tr; im[i] += ti;
+          }
+        }
+      }
+      const mags = this.mags1k;
+      for (let k = 0; k < N / 2; k++) mags[k] = Math.sqrt(re[k] * re[k] + im[k] * im[k]);
+      const B = this.bands.length, frames = this.fluxFrames;
+      const cur = frames[this.fluxCount % 3], old = frames[(this.fluxCount + 1) % 3]; // old = two hops back
+      for (let b = 0; b < B; b++) {
+        const { k0, w: wt } = this.bands[b];
+        let s = 0;
+        for (let j = 0; j < wt.length; j++) s += mags[k0 + j] * wt[j];
+        cur[b] = Math.log10(1 + s);
+      }
+      this.fluxCount++;
+      if (this.fluxCount <= this.fluxMu) return;
+      let sf = 0;
+      for (let b = 0; b < B; b++) {
+        const mx = Math.max(old[b], b > 0 ? old[b - 1] : 0, b + 1 < B ? old[b + 1] : 0);
+        const d = cur[b] - mx;
+        if (d > 0) sf += d;
+      }
+      // peak picking: the largest value of the last ~30 ms, above the ~100 ms mean by delta
+      const H = this.sfHist, L = H.length;
+      let mx = 0, sum = sf;
+      for (let k = 1; k < Math.min(this.sfFill + 1, L); k++) {
+        const v = H[(this.sfPos - k + L) % L];
+        sum += v;
+        if (k <= this.fluxPreMax && v > mx) mx = v;
+      }
+      const mean = sum / Math.min(this.sfFill + 1, L);
+      H[this.sfPos] = sf; this.sfPos = (this.sfPos + 1) % L; if (this.sfFill < L) this.sfFill++;
+      if (this.sfFill < 4 || sf < mx || sf < mean + this.fluxDelta) return;
+      if (this.recentRms <= this.gateLin) return;
+      // place the onset on the attack: the block whose energy rose most in the last ~35 ms
+      let best = -1, rise = -Infinity;
+      for (let k = 0; k < 15; k++) {
+        const j = (this.blockPos - 1 - k) & 15, jp = (j - 1) & 15;
+        if (frameNow - this.blockF[j] > 0.035 * this.sr) break;
+        const r = this.blockE[j] - this.blockE[jp];
+        if (r > rise) { rise = r; best = j; }
+      }
+      const frame = best >= 0 ? this.blockF[best] : frameNow - this.hopDec * this.dec / 2;
+      if (frame - this.lastOnsetFrame <= this.refractory) return;
+      this.fireOnset(frame, this.recentRms, Math.round((frameNow - frame) / this.dec));
+    }
+
     // magnitude spectrum of the 150 ms before an onset: what was already ringing
-    capturePre() {
-      const n = this.chromaN, mask = this.ringSize - 1;
-      if (this.decWritten < n) { this.hasPre = false; return; }
-      let p = (this.ringPos - n) & mask;
+    capturePre(late) {
+      const n = this.chromaN, mask = this.ringSize - 1, skip = late || 0;
+      if (this.decWritten < n + skip) { this.hasPre = false; return; }
+      let p = (this.ringPos - n - skip) & mask;
       const buf = this.chromaBuf;
       for (let i = 0; i < n; i++) { buf[i] = this.ring[p]; p = (p + 1) & mask; }
       this.fftMag(this.preMag);
@@ -290,10 +441,10 @@ function guitarQuestWorklet() {
       const mags = this.mags || (this.mags = new Float32Array(N / 2));
       for (let k = 0; k < N / 2; k++) mags[k] = Math.sqrt(re[k] * re[k] + im[k] * im[k]);
       // keep only what the strum added, unless that removes almost everything (same chord again)
-      if (this.hasPre) {
+      if (this.hasPre && this.preSub > 0) {
         let all = 0, added = 0;
         const dif = this.dif || (this.dif = new Float32Array(N / 2));
-        for (let k = 0; k < N / 2; k++) { const v = mags[k] - 0.7 * this.preMag[k]; dif[k] = v > 0 ? v : 0; all += mags[k]; added += dif[k]; }
+        for (let k = 0; k < N / 2; k++) { const v = mags[k] - this.preSub * this.preMag[k]; dif[k] = v > 0 ? v : 0; all += mags[k]; added += dif[k]; }
         if (added > 0.3 * all) mags.set(dif);
       }
       for (let k = 2; k < N / 2 - 1; k++) {
@@ -320,7 +471,7 @@ function guitarQuestWorklet() {
     analyse(frameNow) {
       if (this.decWritten < this.frameLen) return;
       // linearise the newest frameLen samples
-      const f = this.frame, len = this.frameLen, ring = this.ring, mask = this.ringSize - 1;
+      const f = this.frame, len = this.frameLen, ring = this.ringP, mask = this.ringSize - 1;
       let p = (this.ringPos - len) & mask;
       let e = 0;
       for (let j = 0; j < len; j++) { const v = ring[p]; f[j] = v; p = (p + 1) & mask; }
@@ -349,7 +500,8 @@ function guitarQuestWorklet() {
           let start = 0;
           for (const P of this.cancel) {
             const Pi = Math.floor(P), fr = P - Pi, s0 = start + Pi + 1;
-            for (let j = ext - 1; j >= s0; j--) x[j] -= 0.98 * (x[j - Pi] * (1 - fr) + x[j - Pi - 1] * fr);
+            const g = this.combGain;
+            for (let j = ext - 1; j >= s0; j--) x[j] -= g * (x[j - Pi] * (1 - fr) + x[j - Pi - 1] * fr);
             start = s0;
           }
           const fc = this.frameC;
@@ -436,12 +588,12 @@ function guitarQuestWorklet() {
       });
     }
     // Is a note of period P audible just before the onset? (level above the gate and periodic at P)
-    stillRinging(P) {
-      const mask = this.ringSize - 1, n = 512, Pi = Math.floor(P), fr = P - Pi;
-      if (this.decWritten < n + P + 2) return false;
+    stillRinging(P, late) {
+      const mask = this.ringSize - 1, n = 512, Pi = Math.floor(P), fr = P - Pi, skip = late || 0;
+      if (this.decWritten < n + P + 2 + skip) return false;
       let xy = 0, xx = 0, yy = 0;
       for (let j = 1; j <= n; j++) {
-        const i0 = (this.ringPos - j) & mask;
+        const i0 = (this.ringPos - j - skip) & mask;
         const x = this.ring[i0];
         const y = this.ring[(i0 - Pi) & mask] * (1 - fr) + this.ring[(i0 - Pi - 1) & mask] * fr;
         xy += x * y; xx += x * x; yy += y * y;
@@ -460,7 +612,8 @@ function guitarQuestWorklet() {
       if (this.awaiting) {
         // only trust estimates whose window is mostly after the onset
         if (frameNow - this.onsetFrame < windowFrames * 0.5) return;
-        if (this.prevEst != null && Math.abs(m - this.prevEst) < 0.3) {
+        this.agree = this.prevEst != null && Math.abs(m - this.prevEst) < 0.3 ? this.agree + 1 : 0;
+        if (this.agree >= this.confirmN - 1) {
           this.awaiting = false;
           this.curMidi = Math.round(m);
           this.legatoRun = 0;

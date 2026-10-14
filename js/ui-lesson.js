@@ -28,21 +28,21 @@
         h('p', null, level.desc || '')),
       h('div.row', null, level.custom ? h('button.btn', { onclick: () => UI.go('#/creator/' + level.customId) }, 'Edit in Creator') : null,
         h('button.btn.ghost', { onclick: () => UI.go(level.custom ? '#/songs/mine' : level.practice ? '#/practice/' + level.cat : '#/learn') }, level.custom ? '← My songs' : level.practice ? '← Practice' : '← Levels'),
-        nextLv ? h('button.btn', { onclick: () => UI.go('#/lesson/' + nextLv.id) }, level.practice ? 'Next exercise →' : 'Next level →') : null));
+        nextLv ? h('button.btn', { 'data-sk': 'next', onclick: () => UI.go('#/lesson/' + nextLv.id) }, level.practice ? 'Next exercise →' : 'Next level →') : null));
 
     // ---------- toolbar ----------
-    const playBtn = h('button.btn.primary.big', { onclick: toggle }, '▶ Start');
-    const againBtn = h('button.btn', { onclick: () => restart() }, '↺ Again');
-    const listenBtn = h('button.btn', { onclick: () => listen(), title: 'Hear how it should sound before you play' }, '♪ Listen');
+    const playBtn = h('button.btn.primary.big', { onclick: toggle, 'data-sk': 'toggle' }, '▶ Start');
+    const againBtn = h('button.btn', { onclick: () => restart(), 'data-sk': 'again' }, '↺ Again');
+    const listenBtn = h('button.btn', { onclick: () => listen(), 'data-sk': 'listen', title: 'Hear how it should sound before you play' }, '♪ Listen');
     const tempoLbl = h('span.tempo');
-    const lockBtn = h('button.btn', { onclick: () => setLock(!(lesson ? lesson.lock : s.practiceLock)), title: 'Hold on each note until it is played' }, 'Lock');
-    const loopBtn = h('button.btn', { onclick: () => { loopBar.hidden = !loopBar.hidden; loopBtn.classList.toggle('on', !loopBar.hidden); } }, '⟲ Loop');
+    const lockBtn = h('button.btn', { 'data-sk': 'lock', onclick: () => setLock(!(lesson ? lesson.lock : s.practiceLock)), title: 'Hold on each note until it is played' }, 'Lock');
+    const loopBtn = h('button.btn', { 'data-sk': 'loop', onclick: () => { loopBar.hidden = !loopBar.hidden; loopBtn.classList.toggle('on', !loopBar.hidden); } }, '⟲ Loop');
     const viewBtns = ['fretboard', 'highway', 'tab', 'staff'].map((k) => h('button.btn.small', { class: views[k] ? 'on' : '', onclick: (e) => { views[k] = !views[k]; e.target.classList.toggle('on', views[k]); layout(); } }, { fretboard: 'Fretboard', highway: 'Highway', tab: 'Tab', staff: 'Notation' }[k]));
     const posSel = hasPitchTokens ? h('select', { title: 'Position lock (REQ-POS-4)', onchange: (e) => { lockPos = e.target.value === '' ? null : +e.target.value; store.setSetting('positionLock', lockPos != null); build(); } },
       h('option', { value: '' }, 'Any position'), ...[0, 2, 5, 7, 9, 12].map((p) => h('option', { value: p, selected: lockPos === p }, p === 0 ? 'Open position' : 'Position ' + p))) : null;
     const toolbar = h('div.toolbar', null, playBtn, againBtn, listenBtn, h('span.sep'),
       UI.modeSeg((m) => { mode = m; if (lesson && lesson.state === 'playing') lesson.stop(); build(); }), h('span.sep'),
-      h('button.btn.small', { onclick: () => tempo(-0.05), title: 'Slower' }, '−'), tempoLbl, h('button.btn.small', { onclick: () => tempo(0.05), title: 'Faster' }, '+'),
+      h('button.btn.small', { onclick: () => tempo(-0.05), title: 'Slower', 'data-sk': 'slower' }, '−'), tempoLbl, h('button.btn.small', { onclick: () => tempo(0.05), title: 'Faster', 'data-sk': 'faster' }, '+'),
       h('span.sep'), lockBtn, loopBtn, posSel, h('span.sep'), ...viewBtns);
 
     // note steps: play 10% ... 100% of the notes, building up (GQ.steps)
@@ -216,11 +216,11 @@
         !run.scored && !run.inputProblem ? h('div', { style: { textAlign: 'left' } }, ...(UI.scoreBlockers(level.id, () => {}).length ? UI.scoreBlockers(level.id, () => { overlay.remove(); overlay = null; showBlockers(); }) : [h('p.small.muted', null, run.reason || '')])) : null,
         run.changes && run.changes.length ? h('p.small.muted', null, 'Chord changes: average ' + (GQ.mean(run.changes.map((c) => c.ms)) / 1000).toFixed(2) + ' s') : null,
         h('div.row', { style: { justifyContent: 'center' } },
-          h('button.btn', { onclick: () => restart() }, '↺ Again'),
+          h('button.btn', { 'data-sk': 'again', onclick: () => restart() }, '↺ Again'),
           run.step < 100 && run.rawScore >= GQ.steps.CLEAR && !run.inputProblem
-            ? h('button.btn.primary', { onclick: () => setStep(run.step + 10) }, `Next step: ${run.step + 10}% of the notes →`) : null,
-          next ? h('button.btn' + (run.step < 100 ? '' : '.primary'), { onclick: () => UI.go('#/lesson/' + next.id) }, level.practice ? 'Next exercise →' : 'Next level →') : null,
-          h('button.btn.ghost', { onclick: () => { overlay.remove(); overlay = null; } }, 'Close'))));
+            ? h('button.btn.primary', { 'data-sk': 'nextstep', onclick: () => setStep(run.step + 10) }, `Next step: ${run.step + 10}% of the notes →`) : null,
+          next ? h('button.btn' + (run.step < 100 ? '' : '.primary'), { 'data-sk': 'next', onclick: () => UI.go('#/lesson/' + next.id) }, level.practice ? 'Next exercise →' : 'Next level →') : null,
+          h('button.btn.ghost', { 'data-sk': 'close', onclick: () => { overlay.remove(); overlay = null; } }, 'Close'))));
       document.body.append(overlay);
       drawSteps();
       if (run.step < 100 && run.rawScore >= GQ.steps.CLEAR && !run.inputProblem && store.settings().autoAdvance) {

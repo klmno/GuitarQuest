@@ -15,7 +15,7 @@
     main.append(
       h('div.hero', null, h('div', null, h('h2', null, 'Writing songs in ABC'),
         h('p.muted.small', null, 'ABC is a plain-text way to write music, used for thousands of folk tunes online. GuitarQuest reads it, places the notes on the neck, and turns the song into a lesson.')),
-        h('div.row', null, h('a.btn.primary', { href: '#/creator' }, 'Open the Creator'), h('a.btn.ghost', { href: '#/songs/mine' }, 'My songs'))),
+        h('div.row', null, h('a.btn.primary', { href: '#/creator', 'data-sk': 'creator' }, 'Open the Creator'), h('a.btn.ghost', { href: '#/songs/mine', 'data-sk': 'mine' }, 'My songs'))),
       h('nav.helpnav.card', null, ...[['start', 'A first tune'], ['header', 'The header'], ['notes', 'Notes and octaves'], ['lengths', 'Note lengths'], ['bars', 'Bars and repeats'], ['keys', 'Keys and accidentals'], ['tab', 'Tab'], ['chords', 'Chords'], ['guitar', 'GuitarQuest settings'], ['more', 'What else is read'], ['examples', 'More examples'], ['problems', 'Fixing problems']]
         .map(([id, t]) => h('a', { href: '#/help', onclick: (e) => { e.preventDefault(); document.getElementById('h-' + id).scrollIntoView({ behavior: 'smooth' }); } }, t))),
       h('div.helpgrid', null,

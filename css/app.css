@@ -175,7 +175,7 @@ label.inline { display: inline-flex; align-items: center; gap: .45rem; font-size
 canvas.chart { width: 100%; height: 12rem; display: block; background: var(--canvas); border: 1px solid var(--line); border-radius: 10px; }
 .levelmeter { position: relative; height: 22px; border-radius: 6px; border: 1px solid var(--line); background: linear-gradient(90deg, var(--good) 0%, var(--good) 70%, var(--warn) 85%, var(--bad) 100%); }
 .levelmeter .mask { position: absolute; top: 0; bottom: 0; right: 0; width: 100%; background: var(--canvas); border-radius: 0 5px 5px 0; }
-.levelmeter .gate { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--accent); }
+.levelmeter .gate { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--accent); }
 .keys td { padding: .3rem .5rem .3rem 0; }
 kbd { font: .8rem var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: .1rem .4rem; background: var(--panel2); }
 .foot { color: var(--muted); font-size: .8rem; padding: 1rem; text-align: center; }
@@ -224,6 +224,16 @@ kbd { font: .8rem var(--mono); border: 1px solid var(--line); border-bottom-widt
 canvas.creator-fb { width: 100%; height: 11rem; display: block; border-radius: 10px; background: var(--canvas); border: 1px solid var(--line); cursor: crosshair; margin-bottom: .4rem; }
 textarea.abc { width: 100%; min-height: 14rem; resize: vertical; background: var(--canvas); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: .7rem .8rem; font: .95rem/1.5 var(--mono); tab-size: 2; }
 textarea.abc:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Creator editor with line numbers: the gutter scrolls with the text, lines never wrap so the numbers stay aligned */
+.editor { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 10px; background: var(--canvas); overflow: hidden; }
+.editor:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.editor textarea.abc { flex: 1; min-width: 0; border: 0; border-radius: 0; white-space: pre; overflow-wrap: normal; overflow-x: auto; padding-left: .6rem; }
+.editor textarea.abc:focus { outline: none; }
+.editor .gutter { flex: none; contain: size; overflow: hidden; padding: .7rem .5rem 3rem .4rem; text-align: right; font: .95rem/1.5 var(--mono); color: var(--muted); background: var(--panel2); border-right: 1px solid var(--line); user-select: none; }
+.editor .gutter div { padding-right: .1rem; }
+.editor .gutter .cur { color: var(--text); }
+.editor .gutter .err { color: var(--bad); font-weight: 700; box-shadow: inset 3px 0 0 var(--bad); background: rgba(240, 90, 79, .14); }
+.editor .gutter .warn { color: var(--warn); font-weight: 700; box-shadow: inset 3px 0 0 var(--warn); background: rgba(240, 195, 58, .12); }
 ul.problems { list-style: none; margin: .5rem 0 0; padding: 0; font-size: .85rem; }
 ul.problems li { padding: .3rem .5rem; border-radius: 6px; margin-bottom: .25rem; cursor: pointer; }
 ul.problems li.err { background: #3a1b19; color: #ffb3ad; }
@@ -255,3 +265,9 @@ a.btn { text-decoration: none; color: inherit; }
 .px-search { flex: 1 1 14rem; min-width: 12rem; padding: .45rem .7rem; border-radius: 8px; border: 1px solid var(--line); background: var(--panel, transparent); color: inherit; font: inherit; }
 .px .px-aka { font-size: .8rem; color: var(--accent, var(--info)); font-style: italic; }
 .px .px-desc { margin: .4rem 0 .2rem; min-height: 3.6em; }
+
+/* keyboard shortcuts: the key in front of a button's name (content set by js/shortcuts.js) */
+main [data-sk]::before { font-weight: 800; font-variant-numeric: tabular-nums; opacity: .75; }
+
+/* narrow phones: segmented buttons (with their shortcut keys) wrap instead of pushing the page sideways */
+@media (max-width: 520px) { .seg { flex-wrap: wrap; max-width: 100%; } .seg button { padding: .5rem .55rem; } }

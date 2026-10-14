@@ -25,7 +25,7 @@
       h('div.hero', null,
         h('div', null, h('h2', null, picking ? "Who's playing?" : 'Profiles'),
           h('p.muted.small', null, 'Each profile keeps its own levels, stars, streak, practice time, history and settings. Everything stays in this browser.')),
-        picking ? null : h('div.row', null, h('button.btn', { onclick: () => fileIn.click() }, 'Import a profile'), fileIn)),
+        picking ? null : h('div.row', null, h('button.btn', { 'data-sk': 'import', onclick: () => fileIn.click() }, 'Import a profile'), fileIn)),
       grid);
 
     function draw() {
@@ -84,7 +84,7 @@
         doneSwitch();
       };
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
-      return h('div.card.profile.add', null, h('h3.pname', null, 'New player'), input, swatches, h('button.btn', { onclick: add }, '+ Add profile'));
+      return h('div.card.profile.add', null, h('h3.pname', null, 'New player'), input, swatches, h('button.btn', { 'data-sk': 'add', onclick: add }, '+ Add profile'));
     }
 
     function exportProfile(s) {

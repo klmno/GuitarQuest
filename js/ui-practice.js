@@ -9,8 +9,8 @@
     let query = '';
     const played = P.items.filter((x) => p.levels[x.id] && p.levels[x.id].best).length;
     const seg = h('div.seg.wrap', null, ...[['all', 'All']].concat(P.cats.map((c) => [c[0], c[1]])).map(([c, t]) =>
-      h('button', { class: c === cat ? 'on' : '', 'data-cat': c, onclick: () => { cat = c; history.replaceState(null, '', '#/practice' + (c === 'all' ? '' : '/' + c)); for (const b of seg.children) b.classList.toggle('on', b.dataset.cat === c); draw(); } }, t)));
-    const search = h('input.px-search', { type: 'search', placeholder: 'Find an exercise (e.g. spider, box 3, shuffle)', oninput: (e) => { query = e.target.value.trim().toLowerCase(); draw(); } });
+      h('button', { class: c === cat ? 'on' : '', 'data-cat': c, 'data-sk': c === 'all' ? 'all' : null, onclick: () => { cat = c; history.replaceState(null, '', '#/practice' + (c === 'all' ? '' : '/' + c)); for (const b of seg.children) b.classList.toggle('on', b.dataset.cat === c); draw(); } }, t)));
+    const search = h('input.px-search', { type: 'search', 'data-sk': 'search', placeholder: 'Find an exercise (e.g. spider, box 3, shuffle)', oninput: (e) => { query = e.target.value.trim().toLowerCase(); draw(); } });
     const list = h('div');
     const unplayed = () => P.items.filter((x) => !(p.levels[x.id] && p.levels[x.id].best));
     main.append(
@@ -18,8 +18,8 @@
         h('div', null, h('h2', null, 'Practice room'),
           h('p.muted.small', null, `${P.items.length} well-known exercises under the names guitar teachers use: warm-ups, the pentatonic boxes, scales and modes, arpeggios, rhythm patterns and speed drills. ${played} played so far. Use them every day, even after the lessons are done.`)),
         h('div.row', null,
-          h('button.btn.primary', { onclick: () => UI.go('#/lesson/px-chromatic-1234') }, '▶ Warm up'),
-          h('button.btn', { title: 'An exercise you have not played yet', onclick: () => { const l = unplayed().length ? unplayed() : P.items; UI.go('#/lesson/' + l[Math.floor(Math.random() * l.length)].id); } }, '🎲 Surprise me'))),
+          h('button.btn.primary', { 'data-sk': 'warmup', onclick: () => UI.go('#/lesson/px-chromatic-1234') }, '▶ Warm up'),
+          h('button.btn', { 'data-sk': 'surprise', title: 'An exercise you have not played yet', onclick: () => { const l = unplayed().length ? unplayed() : P.items; UI.go('#/lesson/' + l[Math.floor(Math.random() * l.length)].id); } }, '🎲 Surprise me'))),
       h('div.row', { style: { marginBottom: '1rem' } }, seg, search), list);
 
     const listenBtn = (x) => h('button.btn.small.ghost.listen', { 'data-id': x.id, onclick: () => { if (GQ.preview.playing(x)) GQ.preview.stop(); else GQ.preview.play(x); } }, '♪ Listen');

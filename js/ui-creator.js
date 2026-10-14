@@ -123,9 +123,39 @@
     bindHeader(fPos, 'I:position'); bindHeader(fOct, 'I:octave', (v) => (v === '-1' ? '' : v)); bindHeader(fPlay, 'I:play', (v) => (v === 'melody' ? '' : v));
 
     // ----- editor -----
-    const ta = h('textarea.abc', { spellcheck: false, autocapitalize: 'off', autocomplete: 'off', rows: 14, 'aria-label': 'ABC notation' });
+    const ta = h('textarea.abc', { spellcheck: false, autocapitalize: 'off', autocomplete: 'off', wrap: 'off', rows: 14, 'aria-label': 'ABC notation' });
     ta.value = text;
     ta.addEventListener('input', () => { lastTyped = performance.now(); setText(ta.value, false); });
+    // line numbers next to the text, coloured where a problem is reported, the cursor's line highlighted
+    const gutter = h('div.gutter', { 'aria-hidden': 'true' });
+    const editor = h('div.editor', null, gutter, ta);
+    let gutterKey = '', curLine = 0;
+    function drawGutter() {
+      const n = ta.value.split('\n').length;
+      const marks = {};
+      if (parsed) {
+        for (const x of parsed.warnings) if (x.line) marks[x.line] = 'warn';
+        for (const x of parsed.problems) if (x.line) marks[x.line] = 'err';
+      }
+      const key = n + '|' + JSON.stringify(marks);
+      if (key !== gutterKey) {
+        gutterKey = key;
+        let html = '';
+        for (let i = 1; i <= n; i++) html += `<div${marks[i] ? ` class="${marks[i]}" title="${marks[i] === 'err' ? 'Error' : 'Warning'} on this line"` : ''}>${i}</div>`;
+        gutter.innerHTML = html;
+        gutter.style.width = `calc(${String(n).length + 0.4}ch + 1rem)`;
+        curLine = 0;
+      }
+      const at = ta.value.slice(0, ta.selectionStart).split('\n').length;
+      if (at !== curLine) {
+        if (gutter.children[curLine - 1]) gutter.children[curLine - 1].classList.remove('cur');
+        if (gutter.children[at - 1]) gutter.children[at - 1].classList.add('cur');
+        curLine = at;
+      }
+      gutter.scrollTop = ta.scrollTop;
+    }
+    ta.addEventListener('scroll', () => { gutter.scrollTop = ta.scrollTop; });
+    for (const ev of ['keyup', 'click', 'select', 'focus']) ta.addEventListener(ev, drawGutter);
     const problemsEl = h('ul.problems');
     const statsEl = h('div.small.muted');
     const saveState = h('span.small.muted');
@@ -169,12 +199,17 @@
       practiceBtn.disabled = parsed.problems.length > 0;
       saveState.textContent = parsed.problems.length ? 'Fix the problems to save.' : dirty ? (song ? 'Changes not saved yet.' : 'Not saved yet.') : 'Saved.';
       scrub.max = Math.max(1, Math.ceil(parsed.totalBeats));
+      drawGutter();
     }
     function gotoLine(n) {
       if (!n) return;
       const lines = ta.value.split('\n');
       const start = lines.slice(0, n - 1).reduce((a, l) => a + l.length + 1, 0);
       ta.focus(); ta.setSelectionRange(start, start + (lines[n - 1] || '').length);
+      const lh = parseFloat(getComputedStyle(ta).lineHeight) || 20;
+      ta.scrollTop = Math.max(0, (n - 1) * lh - ta.clientHeight / 3);
+      ta.scrollLeft = 0;
+      drawGutter();
     }
 
     // ----- inserting -----
@@ -251,7 +286,7 @@
     // ----- preview -----
     const tab = h('canvas'), staff = h('canvas');
     const scrub = h('input', { type: 'range', min: 0, max: 1, step: 0.25, value: 0, oninput: (e) => (pos = +e.target.value), 'aria-label': 'Scroll through the song' });
-    const listenBtn = h('button.btn', { onclick: () => {
+    const listenBtn = h('button.btn', { 'data-sk': 'listen', onclick: () => {
       if (GQ.preview.playing(draftLevel())) { GQ.preview.stop(); return; }
       if (parsed.problems.length) { UI.toast('Fix the problems first.'); return; }
       GQ.preview.play(draftLevel(), { from: Math.floor(pos / parsed.beatsPerBar) * parsed.beatsPerBar });
@@ -260,8 +295,8 @@
     const pvOff = ['start', 'stop', 'end'].map((ev) => GQ.preview.on(ev, () => { const on = GQ.preview.playing(draftLevel()); listenBtn.textContent = on ? '■ Stop' : '♪ Listen'; listenBtn.classList.toggle('on', on); }));
 
     // ----- actions -----
-    const saveBtn = h('button.btn.primary', { onclick: () => save() }, 'Save song');
-    const practiceBtn = h('button.btn', { onclick: () => { const s = save(); if (s) UI.go('#/lesson/song-custom-' + s.id + '-full'); } }, 'Save and practise');
+    const saveBtn = h('button.btn.primary', { onclick: () => save(), 'data-sk': 'save' }, 'Save song');
+    const practiceBtn = h('button.btn', { 'data-sk': 'practise', onclick: () => { const s = save(); if (s) UI.go('#/lesson/song-custom-' + s.id + '-full'); } }, 'Save and practise');
     const fileIn = h('input', { type: 'file', accept: '.abc,.tab,.txt,text/plain', hidden: true, onchange: async (e) => {
       const f = e.target.files[0]; if (!f) return;
       const raw = await f.text();
@@ -289,9 +324,9 @@
       actions.innerHTML = '';
       actions.append(...[saveBtn, practiceBtn,
         song ? h('button.btn.ghost', { onclick: () => save(true), title: 'Keep the original and save this as a new song' }, 'Save as a copy') : null,
-        h('button.btn.ghost', { onclick: () => UI.download(UI.fileName(parsed.meta.title, GQ.custom.ext(fmt)), text) }, 'Download ' + GQ.custom.ext(fmt)),
-        h('button.btn.ghost', { onclick: () => fileIn.click(), title: 'Open an .abc or tab (.tab, .txt) file' }, 'Open file'), fileIn,
-        h('button.btn.ghost', { onclick: () => { if (text !== savedText && text !== templateOf(fmt) && !confirm('Start a new song? Unsaved changes here will be lost.')) return; GQ.storage.set('creatorDraft', null); song = null; savedText = null; history.replaceState(null, '', '#/creator'); setText(templateOf(fmt), true); drawActions(); } }, 'New'),
+        h('button.btn.ghost', { 'data-sk': 'download', onclick: () => UI.download(UI.fileName(parsed.meta.title, GQ.custom.ext(fmt)), text) }, 'Download ' + GQ.custom.ext(fmt)),
+        h('button.btn.ghost', { 'data-sk': 'open', onclick: () => fileIn.click(), title: 'Open an .abc or tab (.tab, .txt) file' }, 'Open file'), fileIn,
+        h('button.btn.ghost', { 'data-sk': 'new', onclick: () => { if (text !== savedText && text !== templateOf(fmt) && !confirm('Start a new song? Unsaved changes here will be lost.')) return; GQ.storage.set('creatorDraft', null); song = null; savedText = null; history.replaceState(null, '', '#/creator'); setText(templateOf(fmt), true); drawActions(); } }, 'New'),
         saveState].filter(Boolean));
     }
     drawActions();
@@ -302,7 +337,7 @@
         'Marks: 5h7 hammer-on, 7p5 pull-off, 5/7 slide, 7b9 bend, 7~ vibrato, x dead note, x3 after a block repeats it, pm--- under the block palm-mutes. ',
         h('a', { href: '#/help', onclick: (e) => { e.preventDefault(); UI.go('#/help'); setTimeout(() => { const el = document.getElementById('h-tab'); if (el) el.scrollIntoView(); }, 50); } }, 'More about tab'), '.'),
       h('p.small.muted', null, 'Tab has no note lengths, so the rhythm is read from the spacing: space the notes the way they are played, and check it with Listen.'));
-    const fmtSeg = h('div.seg', { role: 'group', 'aria-label': 'Written as' }, ...[['abc', 'ABC'], ['tab', 'Tab']].map(([f, t]) => h('button', { 'data-f': f, onclick: () => switchFormat(f) }, t)));
+    const fmtSeg = h('div.seg', { role: 'group', 'aria-label': 'Written as' }, ...[['abc', 'ABC'], ['tab', 'Tab']].map(([f, t]) => h('button', { 'data-f': f, 'data-sk': f, onclick: () => switchFormat(f) }, t)));
     const abcOnly = [field('Key', fKey), field('Default note length', fUnit), field('Neck position', fPos), field('Octave', fOct), field('Play', fPlay), tools, fb,
       h('p.small.muted', null, 'Pick a length, then click a string and fret. The note is written into the song below at the cursor. Type directly in the text too: it is checked as you go.')];
     function setFormat(f, newText) {
@@ -348,7 +383,7 @@
           h('div.fields', null, field('Title', fTitle), field('By', fBy), field('Meter', fMeter), field('Tempo (quarter notes per minute)', fTempo), ...abcOnly.slice(0, 5))),
         h('section.card.write', null, h('h3', { style: { marginTop: 0 } }, 'Write'),
           ...abcOnly.slice(5), tabHint,
-          ta, problemsEl),
+          editor, problemsEl),
         h('section.card.preview-card', null,
           h('div.row.spread', null, h('h3', { style: { margin: 0 } }, 'Preview'), h('div.row', null, listenBtn)),
           h('div.strip.tab', null, tab), h('div.strip.staff', null, staff), scrub, statsEl)),
